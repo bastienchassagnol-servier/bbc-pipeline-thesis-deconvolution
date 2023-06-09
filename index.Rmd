@@ -5,7 +5,7 @@ output:
   bbcCorpo::bbc_html:
     highlight: kate
     color_logo: blue
-    split_by: section
+    # split_by: section
     includes:
       before_body: auxiliary/macros.html
   bookdown::pdf_document2:
@@ -988,6 +988,53 @@ ggpubr::ggarrange(d1,
 
 ## Differential expression analysis
 
+### From scratch
+
+
+t-test should be used for normally distributed variables compared between two groups
+Wilcoxon can also be used or non-normal variables and small sample size designs
+Kruskall-Wallis compares all levels of a comparison variable
+
+
+```{r}
+#eset_fpkm <- filter_top_stat(eset_fpkm, stat = "sd", k = 1000, p = NULL)
+
+# Contrasts
+contr_matrix <- c("AAA//Placebo", "BBB//Placebo", "CCC//Placebo")
+
+dea_univariate(microarray_eset, "group")
+
+# Perform group comparison with the chosen test ("t", "wilcoxon", "kruskal")
+
+# For given contrasts
+GC_res <- dea_univariate(eset = eset_fpkm,
+                         var = "Treatment", 
+                         contrasts = contr_matrix,
+                         test = "wilcoxon",
+                         correction =  "BH"
+                         )
+
+# For all possible combinations of treatments
+GC_res <- dea_univariate(eset = eset_fpkm,
+                         var = "Treatment", 
+                         test = "t",
+                         correction =  "BH"
+                         )
+
+# For all treatment together (Kruskal-Wallis test)
+GC_res <- dea_univariate(eset = eset_fpkm,
+                         var = "Treatment", 
+                         test = "kruskal",
+                         correction =  "BH"
+                         )
+
+# Add the tables of significant genes to the results
+GC_res <- GC_res %>% dplyr::mutate(DEgenes = purrr::map(res,
+                       ~ .x %>% filter(p_adj < t_pvalue)))
+
+```
+
+
 ### DESeq2 framework
 
 :::info
@@ -1735,4 +1782,22 @@ purrr::pwalk(DEA_res ,
                cat("\n")
                
              })
+```
+
+
+
+# Reproducibility
+
+`r R.version.string` was used with packages: 
+
+```{r pkgs-version, results="asis", echo=FALSE}
+pkgs <- c("FactoMineR", "limma")
+pkgs_bbc <- c("bbcCorpo", "bbcPreprocessing", 
+              "bbcSupervised", "bbcUnsupervised", "bbcUtils", 
+              "bbcViz", "bbcWrangling", "bbcVerse")
+pkgs <- c(sort(pkgs), sort(pkgs_bbc))
+
+cat(bbcUtils::pkg_version(pkgs, sep = ",\n", and = "",
+                          before = "+ ", after = ""), 
+    ".\n", sep = "")
 ```
