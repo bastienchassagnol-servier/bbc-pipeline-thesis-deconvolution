@@ -1,0 +1,88 @@
+---
+title: "Code_examles"
+author: "Team"
+date: "03/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<!-- Example of codes for bullet points -->
+
+1. First item on our numbered list
+    * a bullet point
+    - a bullet point
+    + still a bullet point
+  
+2. Second item on our numbered list
+    * a bullet point:
+        * Now with a sub-list to our sub-list
+            * still with a sub-list to our sub-list
+    - a bullet point
+    + still a bullet point
+
+    
+    
+    
+    
+## R Markdown
+
+
+# Template to be used in rmd
+
+## Bloc
+
+
+Cette partie permet de faire des colonnes côte à côte
+
+::::mycolumns
+
+:::mycolumn
+Here is the **first** Div.
+
+```{r}
+DT::datatable(iris)
+```
+:::
+
+:::mycolumn
+And this block will be put on the right:
+
+```{r}
+flextable::flextable(iris)
+```
+:::
+::::
+
+## Colonnes dans une boucle
+
+
+```{r, results='asis'}
+cat("\n")
+purrr::walk(1:3, function(x){
+  cat("\n")
+  cat("::::mycolumns")
+  cat("\n")
+  cat(":::mycolumn")
+  cat("\n")
+  cat(knitr::knit_print(DT::datatable(iris)))
+  cat("blabla")
+  cat("\n")
+  cat(":::")
+  cat("\n")
+  cat(":::mycolumn")
+  cat("\n")
+  cat("blabla")
+  cat(knitr::knit_print(DT::datatable(iris)))
+  cat("\n")
+  cat(":::")
+  cat("\n")
+  cat("::::")
+  cat("\n")
+
+})
+cat("\n")
+
+```

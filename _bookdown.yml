@@ -1,0 +1,8 @@
+delete_merged_file: true
+rmd_files:
+- "index.Rmd"
+- "200-call_techno.Rmd"
+- "300-conclusion.Rmd"
+language:
+  ui:
+    chapter_name: "Chapter "

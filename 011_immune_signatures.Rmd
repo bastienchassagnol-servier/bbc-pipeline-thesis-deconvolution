@@ -1,0 +1,197 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                                Immune signatures evaluation                             -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+<!-- This script calculates and compares many immune signatures between samples   -->
+<!-- Based on an object referencing the main Immune/Infla signature, on can calculate a score for each signature per sample and -->
+<!--              - Add it to the pData and fData of the original eSet   -->
+<!--              - Create a new eSet with the signature as expression -->
+
+# **Immune signatures**
+
+## **Immune signatures calculation**
+
+<!-- Signature scores can be calculated on Vst counts, FPKM or TPM  -->
+
+```{r immune-signatures}
+# Loading reference signature dataset
+data(reference_signatures, package = "bbcData")
+
+# Calculate Sample scores for each signature
+
+score_tmp <-
+  reference_signatures %>%
+  group_by(signature) %>%
+  nest() %>%
+  ungroup() %>%
+  mutate(eset_scoring = map(data,
+                            possibly(
+                              ~ filter_features_from_values(
+                                eset_count_filtered_vst,
+                                column = "GeneID",
+                                values = .x %>% data.frame() %>% pull(symbol)
+                              ),
+                              list(NULL)
+                            ))) %>%
+  mutate(score = purrr::pmap(., function(eset_scoring, signature, ...) {
+    safe_score <- possibly(scoring,
+                           tibble(
+                             "samples" = colnames(eset_count_filtered_vst),
+                             signature = NA
+                           )  %>%
+                             setNames(., c("samples", signature)))
+    safe_score(eset_scoring , fun = mean, score_name = signature)
+  }))
+
+
+score_final <-
+  purrr::reduce(score_tmp$score, left_join, by = "samples")
+score_final <-
+  rename_with(score_final, ~ paste0(., "_score"),!samples)
+```
+
+<!-- Update eSet with signatures -->
+
+```{r, eval = F}
+# the score for each sample are added to the pData
+clinical <-
+  eset_count_filtered_vst %>%
+  pData() %>%
+  as_tibble(rownames = "samples") %>%
+  left_join(score_final, by = "samples") %>%
+  as.data.frame()
+
+rownames(clinical) <- clinical$samples
+
+# the belonging to a gene to a signature is filled in the fData
+format_sig <-
+  reference_signatures  %>%
+  mutate(n = 1) %>%
+  pivot_wider(
+    names_from = signature,
+    values_from = n,
+    values_fill = 0,
+    values_fn = max
+  )
+
+genes_info <-
+  eset_count_filtered_vst %>%
+  fData() %>%
+  left_join(format_sig, by = c("GeneID" = "symbol")) %>%
+  mutate(across(colnames(format_sig %>%
+                           dplyr::select(-symbol)), replace_na, 0))
+rownames(genes_info) <- genes_info$GeneID
+
+# new eset
+eset_count_filtered_vst_sig <-
+  eset_object(
+    expression_data = eset_count_filtered_vst %>% exprs,
+    phenotype_data = clinical,
+    feature_data = genes_info
+  )
+
+```
+
+<!-- Create new eSet with signature scores as expression -->
+
+```{r, eval = TRUE}
+
+exp_sig <- score_final %>% column_to_rownames(var = "samples") %>% as.matrix() %>% t()  
+rownames(exp_sig) <- gsub("_score", "", rownames(exp_sig))
+
+eset_signature <-
+  eset_object(
+    expression_data = exp_sig,
+    phenotype_data = pData(eset_count_filtered_vst),
+    feature_data = data.frame(
+      row.names = rownames(exp_sig),
+      signature = rownames(exp_sig)
+    )
+  )
+
+```
+
+
+## **Evaluation by groups** {.tabset}
+
+:::info
++ Boxplots comparing scores on the main immune signatures MCPcounter or Galon are proposed
+:::
+
+
+```{r, results='asis', fig.width=8, fig.height=5}
+
+purrr::walk(eset_signature %>% fData() %>% pull(signature),
+            function(.x) {
+              cat("  \n  \n")
+              cat(paste0("  \n### ",   .x,   "\n"))
+              if (eset_signature %>% filter_features_from_values(values = .x, column = "signature") %>% exprs() %>% is.na() %>% all() != TRUE){
+              print(
+                draw_boxplot(
+                  eset_signature,
+                  col_y = .x,
+                  col_x = "Treatment",
+                  col_color = "Treatment",
+                  palette = "dark2",
+                  add_point = "jitter_on_x",
+                  point_size = 2
+                ) + ggtitle(.x)  + rotate_x_text(45)
+              )}
+              cat("\n")
+            })
+
+```
+
+## **Signature comparisons** 
+
+```{r}
+DSA_res <- dea_univariate(eset = eset_signature,
+  var = "Treatment",
+  test = c("wilcoxon"),
+  correction = "BH", contrasts = c("AAA//Placebo", "BBB//Placebo", "CCC//Placebo")
+) 
+```
+
+
+
+## **Table of results** {.tabset}
+
+<!-- Creates a tab with the table for each contrast  -->
+
+```{r, results='asis', fig.width= 12, fig.height=8 , eval=TRUE, echo=FALSE}
+purrr::pwalk(DSA_res,
+             function(res, contrast, ...) {
+               cat("  \n  \n")
+               cat(paste0(
+                 "  \n#### ",
+                 contrast %>% gsub("//", " Vs ", .)
+               ))
+
+               # if (nrow(DEgenes) > 0) {
+                 cat("\n")
+                 cat("::::mycolumns")
+                 cat("\n")
+                 cat(":::mycolumn")
+                 cat("\n")
+                 cat(knitr::knit_print(
+                   display_table(
+                     res %>% select(features_id, p_value, p_adj, estimate, conf.low, conf.high ),
+                     interactive = TRUE,
+                     highlighted_color = "lightblue",
+                     nmax_display = 10
+                   )
+                 ))
+
+                 cat("\n")
+                 cat(":::")
+                 cat("\n")
+                 cat("::::")
+                 cat("\n")
+               # }
+               cat("\n")
+
+             })
+
+```

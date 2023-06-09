@@ -1,0 +1,191 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+%
+\documentclass[
+]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{lmodern}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math}
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{longtable,booktabs,array}
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+\usepackage{graphicx}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+% Set default figure placement to htbp
+\makeatletter
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{5}
+% Sets
+\newcommand \NN {\mathbb{N}}
+\newcommand \ZZ {\mathbb{Z}}
+\newcommand \QQ {\mathbb{Q}}
+\newcommand \RR {\mathbb{R}}
+
+% Indicator
+\newcommand \indic {\mathbbm{1}}
+
+% Probability Operators
+\DeclareMathOperator*{\prob}{\mathbb{P}}
+\DeclareMathOperator*{\esp}{\mathbb{E}}
+\DeclareMathOperator*{\var}{\mathbb{V}\text{ar}}
+\DeclareMathOperator*{\cov}{\mathbb{C}\text{ov}}
+\newcommand \PP [1]{\prob\left({#1}\right)}
+\newcommand \EE [1]{\esp\left[{#1}\right]}
+\newcommand \VV [1]{\var\left[{#1}\right]}
+\newcommand \CC [1]{\cov\left[{#1}\right]}
+% Law
+\newcommand \unif [1] {\mathcal{U}\left({#1}\right)}
+\newcommand \normal [2] {\mathcal{N}\left({#1},{#2}\right)}
+
+% Operators
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\argmin}{arg\,min}
+% Matrix
+\DeclareMathOperator*{\diag}{Diag}
+\DeclareMathOperator*{\rank}{Rank}
+\DeclareMathOperator*{\DET}{Det}
+\DeclareMathOperator*{\Tr}{Tr}
+
+% To name R packages
+\newcommand{\CRANpkg}[1]{\href{https://CRAN.R-project.org/package=#1}{\textbf{#1}}}
+\newcommand{\strong}[1]{\texorpdfstring%
+{{\normalfont\fontseries{b}\selectfont #1}}%
+{#1}}
+
+% green tick and red box
+\def\greentick{\includegraphics[scale=0.05]{figs/green_tick.png}}
+\def\redcross{\includegraphics[scale=0.05]{figs/red_cross.png}}
+
+% algorithmic environment
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+
+% blackbox environment
+\usepackage[most]{tcolorbox}
+\newtcolorbox{blackbox}[1]{colback=white, colframe=black, coltext=black, boxsep=1.5pt, arc=4pt, before=\centering, title=#1}
+
+\newenvironment{cols}[1][]{}{} \newenvironment{col}[1]{\begin{minipage}{#1}\ignorespaces}{\end{minipage} \ifhmode\unskip\fi
+\aftergroup\useignorespacesandallpars} \def\useignorespacesandallpars#1\ignorespaces\fi{#1\fi\ignorespacesandallpars} \makeatletter  
+\def\ignorespacesandallpars{\@ifnextchar\par {\expandafter\ignorespacesandallpars\@gobble} {} } \makeatother
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{adjustbox}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{colortbl}
+\usepackage{makecell}
+\usepackage{hhline}
+\usepackage{fvextra}
+\usepackage{cancel}
+\ifLuaTeX
+  \usepackage{selnolig}  % disable illegal ligatures
+\fi
+\IfFileExists{bookmark.sty}{\usepackage{bookmark}}{\usepackage{hyperref}}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same} % disable monospaced font for URLs
+\hypersetup{
+  pdftitle={Use case of BBC pipeline to retrieve purified samples},
+  pdfauthor={BBC},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+
+\title{Use case of BBC pipeline to retrieve purified samples}
+\author{BBC}
+\date{}
+
+\begin{document}
+\maketitle
+
+\hypertarget{introduction}{%
+\section{Material and methods}\label{introduction}}
+
+\hypertarget{objectives}{%
+\subsection{Objectives}\label{objectives}}
+
+\begin{itemize}
+\item
+  Identification of a gene signatures, and associated pathways, describing treatments' effects
+\item
+  Evaluation of differential cell composition due to treatment
+\end{itemize}
+
+\hypertarget{study-design}{%
+\subsection{Study Design}\label{study-design}}
+
+\begin{itemize}
+\item
+  RNA was extracted with kit XXX for 5 donors
+\item
+  Donors have been treated wih AAA, BBB, CCC and a Placebo
+\end{itemize}
+
+\hypertarget{statistical-analysis}{%
+\subsection{Statistical analysis}\label{statistical-analysis}}
+
+We focus on the comparison between
+
+\begin{itemize}
+\tightlist
+\item
+  AAA vs Placebo
+\item
+  BBB vs Placebo
+\item
+  CCC vs Placebo
+\end{itemize}
+
+\hypertarget{differential-expression-analysis}{%
+\subsubsection{Differential expression analysis}\label{differential-expression-analysis}}
+
+\hypertarget{enrichment-analysis}{%
+\subsubsection{Enrichment analysis}\label{enrichment-analysis}}
+
+\hypertarget{immune-signatures-and-deconvolution-analysis}{%
+\subsubsection{Immune signatures and Deconvolution analysis}\label{immune-signatures-and-deconvolution-analysis}}
+
+\end{document}

@@ -1,0 +1,21 @@
+# **Conlusion**
+
+This is the end.
+
+
+# **Reproducibility**
+
+
+`r R.version.string` was used with packages: 
+
+```{r pkgs-version, results="asis", echo=FALSE}
+pkgs <- c("FactoMineR", "limma")
+pkgs_bbc <- c("bbcCorpo", "bbcPreprocessing", 
+              "bbcSupervised", "bbcUnsupervised", "bbcUtils", 
+              "bbcViz", "bbcWrangling", "bbcVerse")
+pkgs <- c(sort(pkgs), sort(pkgs_bbc))
+
+cat(bbcUtils::pkg_version(pkgs, sep = ",\n", and = "",
+                          before = "+ ", after = ""), 
+    ".\n", sep = "")
+```

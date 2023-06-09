@@ -1,0 +1,636 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                                     Data exploration                                    -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+<!-- Loading useful libraries --->
+
+```{r, include = F}
+library(sva)
+```
+
+# **Data exploration**
+
+<!----------------------------------------------------->
+<!--                                                 -->
+<!--         Principal component analysis            -->
+<!--                                                 -->
+<!----------------------------------------------------->
+
+## **Principal component analysis (PCA)**
+  
+:::info  
+Principal component analysis (PCA) allows a representation of the samples in a low dimensional space estimated considering all genes' expressions (after background genes filtering)
+:::
+
+<!-- Calculate PCA   -->
+  
+```{r pca}
+pca_results <- compute_pca(eset_count_filtered_vst)
+```
+
+
+### PCA evaluations {.tabset}
+
+#### Scree-plot
+
+<!-- Scree-plot (eigenvalues) -->
+
+```{r pca-details, fig.width=5, fig.height=5}
+draw_pca_eigenvalues(pca_results)
+```
+
+#### Loadings
+
+<!-- loadings  -->
+<!-- For large datasets, one has to select the amount of features to plot with select.var -->
+
+```{r, fig.width=5, fig.height=5}
+draw_pca_loadings(pca_results, select.var = list(contrib = 2))
+```
+
+
+### 2D-plots
+
+<!-- 2D plots displayed side by side  -->
+
+```{r pca-graph1, fig.width=12, fig.height=5}
+
+g1 <- draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_results,
+  col_color = "Donor",
+  palette = "nejm",
+  add_ellipse = TRUE,
+  title = "PCA of the samples by Donor"
+  ) 
+
+g2 <- draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_results,
+  col_color = "Treatment",
+  palette = "dark2",
+  add_ellipse = TRUE,
+  title = "PCA of the samples by Treatment",
+  shape_manual = c(5, 6, 7, 8)
+  ) 
+
+
+g3 <- draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_results,
+  col_color = "RIN",
+  palette = "spectral",
+  add_ellipse = FALSE,
+  title = "PCA of the samples by RIN"
+)
+
+ggpubr::ggarrange(g1, g2, g3,
+                  ncol = 3,
+                  common.legend = FALSE,
+                  legend = "bottom")
+```
+
+
+### 2D-interactive plots {.tabset}
+
+<!-- 2D interactive plots displayed in different tabs  -->
+
+#### PCA by Treatment
+
+```{r pca-graph2, fig.width = 7, fig.height = 5}
+draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_results,
+  col_color = "Treatment",
+  palette = "dark2",
+  add_ellipse = TRUE,
+  title = "PCA of the samples by Treatment",
+  interactive = TRUE, 
+  col_hover_info= c("Treatment", "Donor")
+)  
+```
+
+#### PCA by RIN
+
+```{r pca-graph3, fig.width = 7, fig.height = 5}
+draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_results,
+  col_color = "RIN",
+  palette = "spectral",
+  add_ellipse = FALSE,
+  title = "PCA of the samples by RIN",
+  interactive = TRUE
+  )  
+```
+  
+  
+### 3D-interactive plots {.tabset}
+
+<!-- 3D interactive plots displayed in different tabs  -->
+
+#### PCA by Treatment
+
+```{r pca-graph4, fig.width = 8, fig.height = 5}
+
+draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_results,
+  col_color = "Treatment",
+  palette = "dark2",
+  title = "PCA of the samples by Treatment",
+  interactive = TRUE, 
+  comp = 1:3,
+  add_ellipse = TRUE,
+  col_hover_info= c("Treatment", "Donor")
+) 
+```
+
+#### PCA by RIN
+
+```{r pca-graph5, fig.width = 8, fig.height = 5}
+
+draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_results,
+  col_color = "RIN",
+  palette = "spectral",
+  title = "PCA of the samples by RIN",
+  comp = 1:3,
+  interactive = TRUE
+  ) 
+```
+
+###
+
+:::conclusion
++ Treatment effect is strong only for some compounds
+
++ There is a donor effect that will be accounted for in the differential expression analysis
+:::
+
+
+
+<!----------------------------------------------------->
+<!--                                                 -->
+<!--  Partial Least Squares - Discriminant Analysis  -->
+<!--                                                 -->
+<!----------------------------------------------------->
+
+## **Partial least squares - discriminant analysis (PLS-DA)**
+  
+:::info  
+Partial least squares - discriminant analysis (PLS-DA) allows a representation of the samples in a low dimensional space estimated considering genes that are selected as the most discriminant between groups of a variable of interest 
+:::
+  
+<!-- Calculate PLS-DA   -->
+
+```{r plsda, include = FALSE}
+plsda_results <- compute_plsda(eset_count_filtered_vst, y_outcome_column = "Treatment")
+
+plsda_results_multi <- compute_plsda(eset_count_filtered_vst, y_outcome_column = "Treatment", 
+                                     multilevel = "Donor")
+```
+
+### Evaluation of the PLS-DA {.tabset}
+
+<!-- Loadings and variable plots  -->
+
+#### Variables
+
+```{r plsda-details, fig.width=8, fig.height=5}
+draw_plsda_loadings(
+  plsda_results,
+  eset_count_filtered_vst,
+  title = "PLSDA variable representation",
+  comp = 1:2,
+  gene_label_column = "GeneID",
+  rad.in = 0.9,
+  cutoff = 0.8,
+  ndisplay = 50,
+  interactive = FALSE
+) + coord_equal() 
+```
+
+#### Importance
+
+```{r plsda-details-2, fig.width=8, fig.height=5}
+draw_plsda_importance(
+  plsda_results,
+  eset_count_filtered_vst,
+  title = "PLSDA scatter plot for individuals",
+  comp = 1,
+  ndisplay = 20,
+  gene_label_column = "GeneID",
+  contrib = 'max',
+  method = 'mean'
+)
+```
+
+#### Performances
+
+```{r plsda-details-3, fig.width=8, fig.height=5, eval = FALSE}
+plot(mixOmics::perf(
+    plsda_results,
+    validation = "Mfold",
+    folds = 5,
+    nrepeat = 10,
+    progressBar = FALSE
+  ))
+```
+
+
+### 2D-plot 
+
+<!-- 2D plots displayed side by side  -->
+
+```{r plsda-graph,  fig.width=9, fig.height=5}
+
+g1 <- draw_plsda_individuals(
+  eset_count_filtered_vst,
+  plsda_results,
+  add_ellipse = TRUE,
+  comp = 1:2,
+  palette = "dark2",
+  title = "PLSDA of the samples by Treatment"
+)  
+
+g2 <- draw_plsda_individuals(
+  eset_count_filtered_vst,
+  plsda_results_multi,
+  add_ellipse = TRUE,
+  comp = 1:2,
+  palette = "dark2",
+  title = "PLSDA of the samples by Treatment \nleveled by Donor"
+)  
+
+ggpubr::ggarrange(g1,
+                  g2,
+                  common.legend = T,
+                  legend = "bottom")
+
+```
+
+
+### 2D-interactive plots {.tabset}
+
+<!-- 2D interactive plots displayed in different tabs  -->
+
+#### PLS-DA by Treament
+
+```{r plsda-graph-2, fig.width = 8, fig.height = 5}
+
+draw_plsda_individuals(
+  eset_count_filtered_vst,
+  plsda_results,
+  add_ellipse = TRUE,
+  comp = 1:2,
+  palette = "dark2",
+  title = "PLSDA of the samples by Treatment", 
+  interactive = TRUE
+)  
+
+```
+  
+#### PLS-DA by Treament levelled by Donor
+
+```{r plsda-graph-3, fig.width = 8, fig.height = 5}
+draw_plsda_individuals(
+  eset_count_filtered_vst,
+  plsda_results_multi,
+  add_ellipse = TRUE,
+  comp = 1:2,
+  palette = "dark2",
+  title = "PLSDA of the samples by Treatment \nleveled by Donor",
+  interactive = TRUE
+)  
+
+```
+
+
+### 3D-interactive plots {.tabset}
+
+<!-- 2D interactive plots displayed in different tabs  -->
+
+#### PLS-DA by Treament
+```{r plsda-graph-4, fig.width = 8, fig.height = 5}
+
+draw_plsda_individuals(
+  eset_count_filtered_vst,
+  plsda_results,
+  comp = 1:3,
+  palette = "dark2",
+  add_ellipse = TRUE,
+  title = "PLSDA of the samples by Treatment", 
+  interactive = TRUE
+)
+
+```
+  
+#### PLS-DA by Treament levelled by Donor
+
+```{r plsda-graph-5, fig.width = 8, fig.height = 5}
+draw_plsda_individuals(
+  eset_count_filtered_vst,
+  plsda_results_multi,
+  comp = 1:3,
+  palette = "dark2",
+  title = "PLSDA of the samples by Treatment \nleveled by Donor",
+  subtitle = "leveled by Donor", 
+  interactive = TRUE
+)
+
+```
+  
+###
+
+:::conclusion
+
++ Treatment effect is more noticeable after gene selection and accounting for donor effect
+
+:::
+
+<!----------------------------------------------------->
+<!--                                                 -->
+<!--                 Sample Clustering               -->
+<!--                                                 -->
+<!----------------------------------------------------->
+
+## **Sample clustering**
+  
+<!-- Heatmap of the similarity matrix calculated between samples  -->
+
+```{r sample-clustering, fig.width=5, fig.height=5}
+# Create a DESeq object dds to be used for clustering
+dds <-
+  DESeq2::DESeqDataSetFromMatrix(
+    countData = exprs(eset_count_filtered),
+    colData = pData(eset_count_filtered_vst),
+    design = ~ Treatment + Donor
+  )
+
+# Caculation of vst normalized expression according to a provided model
+vsd <- DESeq2::vst(dds, blind = FALSE)
+
+# Calculation of an Euclidean distance matrix between samples
+sampleDists <- SummarizedExperiment::assay(vsd) %>% t() %>% dist()
+
+# Formatting distance matrix for clustering
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(vsd$Treatment, vsd$Donor, sep = "_")
+colnames(sampleDistMatrix) <- paste(vsd$Treatment, vsd$Donor, sep = "_")
+colors <-
+  colorRampPalette(rev(RColorBrewer::brewer.pal(9, "Blues")))(255)
+
+# Sample by sample heatmap and clustering
+pheatmap::pheatmap(
+  sampleDistMatrix,
+  clustering_distance_rows = sampleDists,
+  show_rownames = T,
+  clustering_distance_cols = sampleDists,
+  col = colors)
+
+```
+
+
+:::warning
++ Strong donor effect confirmed by clustering
+:::
+
+<!----------------------------------------------------->
+<!--                                                 -->
+<!--              Batch effect correction            -->
+<!--                                                 -->
+<!----------------------------------------------------->
+
+## **Batch effect correction**
+
+The Donor effect is strong and can be removed from the data before downstream exploratory analyses
+
+
+<!---------------------------------------------------------------------->
+<!--     1st approach using ComBat for a single categorical batch     -->
+<!---------------------------------------------------------------------->
+<!------------------->
+<!-- Known batches -->
+<!------------------->
+
+### **Combat**
+                        
+```{r ComBat, include = FALSE}
+
+# Reference model for ComBat including the variables to be preserved (e.g variable of interests)
+mod_combat <-
+  model.matrix( ~ 1 + Treatment, data = pData(eset_count_filtered_vst))
+
+# Applying ComBat
+count_filtered_vst_combat <-
+  sva::ComBat(
+    dat = eset_count_filtered_vst %>% exprs %>% as.matrix,
+    batch = eset_count_filtered_vst %>% pData %>% dplyr::pull(Donor) %>% as.character,
+    mod = mod_combat,
+    par.prior = TRUE,
+    prior.plots = FALSE
+  )
+
+# Create normalized eSet
+eset_count_filtered_vst_combat <-
+  eset_object(
+    expression_data = count_filtered_vst_combat,
+    phenotype_data = pData(eset_count_filtered),
+    feature_data = fData(eset_count_filtered)
+  )
+
+```
+
+<!-- Comparison of PCA before and after batch removal -->
+
+```{r ComBat-PCA,  fig.width=11, fig.height=5}
+
+# Calulates PCA before and after batch removal
+pca_results <- compute_pca(eset_count_filtered_vst)
+pca_results_combat <- compute_pca(eset_count_filtered_vst_combat)
+
+# PCA plots
+d1 <- draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_results,
+  col_color = "Treatment",
+  palette = "dark2",
+  add_ellipse = TRUE,
+  title = "PCA of the samples before batch correction",
+)  
+
+d2 <- draw_pca_individuals(
+  eset_count_filtered_vst_combat,
+  pca_results_combat,
+  col_color = "Treatment",
+  palette = "dark2",
+  add_ellipse = TRUE,
+  title = "PCA of the samples after batch correction",
+)  
+
+ggpubr::ggarrange(d1, d2,
+                  ncol = 2 ,
+                  common.legend = T,
+                  legend = "bottom")
+```
+
+
+:::conclusion
++ Batch effect correction is quite well taken into account 
+:::
+
+
+<!---------------------------------------------------------------------->
+<!-- 2nd approach using Residuals for any number and types of batches -->
+<!---------------------------------------------------------------------->
+<!------------------->
+<!-- Known batches -->
+<!------------------->
+
+### **GLM Residuals**
+
+
+```{r residuals}
+
+# This model is passed to the linear model and corresponds to the variables one wants to remove the effects
+mod_residual <- model.matrix( ~ 1 + Donor, data = pData(eset_count_filtered))
+
+# Vst normalization 
+dds <- DESeq2::DESeqDataSetFromMatrix(
+  countData = exprs(eset_count_filtered),
+  colData = pData(eset_count_filtered),
+  design = ~ 1 + Treatment # This model is the model used for the normalization vst and can include the variable of interest
+) 
+
+dds.vst  <- SummarizedExperiment::assay(dds %>% DESeq2::vst(blind = F))
+
+# Run of Limma linear regression model
+dds.limma.fit <- limma::lmFit(dds.vst, design = mod_residual)
+
+# Residuals of previous model corresponds to the normalized matrix
+resid <- residuals(dds.limma.fit, y = dds.vst)
+
+# Creation a a normalized eSet
+eset_count_filtered_vst_residuals <-
+  eset_object(
+    expression_data = resid,
+    phenotype_data = pData(eset_count_filtered),
+    feature_data = fData(eset_count_filtered)
+  )
+
+```
+
+<!-- Comparison of PCA before and after batch removal -->
+
+```{r residuals-PCA,  fig.width=11, fig.height=5}
+
+pca_results <- compute_pca(eset_count_filtered_vst)
+pca_results_residuals <- compute_pca(eset_count_filtered_vst_residuals)
+
+d1 <- draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_results,
+  col_color = "Treatment",
+  palette = "dark2",
+  add_ellipse = TRUE,
+  title = "PCA of the samples before batch correction",
+)  
+
+d2 <- draw_pca_individuals(
+  eset_count_filtered_vst_residuals,
+  pca_results_residuals,
+  col_color = "Treatment",
+  palette = "dark2",
+  add_ellipse = TRUE,
+  title = "PCA of the samples after batch correction",
+)  
+
+ggpubr::ggarrange(d1, d2,
+                  ncol = 2 ,
+                  common.legend = TRUE,
+                  legend = "bottom")
+```
+
+:::conclusion
++ Batch effect correction is quite well taken into account 
+:::
+
+<!---------------------------------------------------------------------->
+<!--   3rd approach using SVA/RUV for a single categorical batch      -->
+<!---------------------------------------------------------------------->
+<!--------------------->
+<!-- Unknown batches -->
+<!--------------------->
+                        
+### **Surrogate Variable Analysis (SVA)**
+
+<!-- Surrogate variable analysis (SVA) -->
+
+```{r sva, message = FALSE, include = FALSE}
+# Full model including all variables of interest (that we know have an effect on the outcome that we want to estimate)
+mod_sva <-
+  model.matrix( ~ 1 + Treatment, data = pData(eset_count_filtered_vst))
+
+# Null model with only an intercept
+mod_null <-  model.matrix( ~ 1, data = pData(eset_count_filtered_vst))
+
+# Estimation of the number of surogate variables
+n_sv = num.sv(eset_count_filtered_vst %>% exprs , mod_sva, method = "be")
+
+# Calculation of the surogate variables
+svobj = sva(eset_count_filtered_vst %>% exprs, mod_sva, mod_null, n.sv = n_sv)
+
+# svobj$sv contains the surrogate variables that can be used as adjustments in DEA models or as known batch variables in the 2nd approach using Residuals to obtain a batch free eSet
+```
+
+#### **Surrogate variables evaluation through PCA** 
+
+```{r sva-eval, fig.width=11, fig.height=5}
+# Creation of a bogus pca_object to plot the surrogate variables
+pcs <- svobj$sv
+colnames(pcs) <- paste0("Dim.", 1:ncol(pcs))
+rownames(pcs) <- colnames(eset_count_filtered_vst)
+
+eig <- data.frame(eigenvalue = rep(0, n_sv))
+eig <- eig %>% mutate(var = 100*eigenvalue/sum(eigenvalue)) %>% mutate(cumvar = cumsum(var))
+colnames(eig) <- c("eigenvalue", "percentage of variance", "cumulative percentage of variance")
+rownames(eig) <- paste0("comp ", 1:nrow(eig))
+
+# Creation of a bogus PCA object
+pca_object <- list(ind = list(coord = pcs), eig = eig)
+
+# PCA plot of the SV
+d1 <- draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_object,
+  col_color = "Treatment",
+  palette = "dark2",
+  add_ellipse = TRUE,
+  title = "Sample plot on the Surrogate Variable spaces",
+)
+
+d2 <- draw_pca_individuals(
+  eset_count_filtered_vst,
+  pca_object,
+  col_color = "Donor",
+  palette = "dark2",
+  add_ellipse = TRUE,
+  title = "Sample plot on the Surrogate Variable spaces",
+)
+
+ggpubr::ggarrange(d1,
+                  d2,
+                  ncol = 2 ,
+                  common.legend = F,
+                  legend = "bottom")
+```
+
+:::conclusion
++ The first two surrogate variables corresponds to the donor groups and can be used in downstream analyses 
+:::
+
+<!-- Remove unwanted variation (RUV) -->

@@ -1,0 +1,131 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                                     Data Management                                     -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+<!-- An expression matrix, a gene annotation matrix and a patient meta data matrix are necessary to use this pipeline -->
+<!--------------------------------------------------------------->
+<!--                                                           -->
+<!--             Data format and quality check-ups             -->
+<!--        to perform before creating the eSet object         -->
+<!--                                                           -->
+<!--------------------------------------------------------------->
+
+<!-- 1 -- Data format: Expression matrix should be a matrix and annotation matrices should be dataframes. All element of the eset should have colnames and rownames filled -->
+<!-- 2 -- Expression matrices: feature IDs must be filled in rownames and sample IDs in colnames -->
+<!-- 3 -- Meta and clinical data: samples IDs must be filled in rownames and correspond to colnames of expression matrices (same number and names of samples) -->
+<!-- 4 -- Feature annotation: feature IDs must be filled in rownames and correspond rownames of expression matrices (same number and names of features) -->
+
+<!-- 5 -- Variable types: Carefully prepare samples and features annotation data by formatting numerical variables in format numeric and textual variables in factors  -->
+
+<!-- 6 -- Missing values: Check the homogeneity of missing values so that they are all marked as 'NA'  -->
+
+<!-- 7 --  Clinical data and meta data can be merged into a single sample annotation dataframe -->
+
+
+<!--------------------------------------------------------------->
+<!--                                                           -->
+<!--                 eSet object creation                      -->
+<!--                                                           -->
+<!--------------------------------------------------------------->
+
+```{r import-local-data, eval = FALSE}
+data_path <- "path_to_your_data"
+
+count <- read.delim(paste0(data_path, "counts.txt", sep = ""))
+fpkm <- read.delim(paste0(data_path, "fpkm.txt", sep = ""))
+tpm <- read.delim(paste0(data_path, "tpm.txt", sep = ""))
+microarray <- read.delim(paste0(data_path, "microarray.txt", sep = ""))
+
+meta_data <- read.delim(paste0(data_path, "meta_data.txt", sep = ""))
+gene_annotation <- read.delim(paste0(data_path, "gene_annotation.txt", sep = ""))
+clinical_data <- read.delim(paste0(data_path, "clinical_data.txt", sep = ""))
+```
+
+
+```{r create-eset-object, eval = FALSE}
+eset_count <-
+  eset_object(
+    expression_data = count,
+    phenotype_data = clinical_data,
+    feature_data = gene_annotation
+  )
+
+eset_tpm <-
+  eset_object(
+    expression_data = tpm,
+    phenotype_data = clinical_data,
+    feature_data = gene_annotation
+  )
+
+eset_fpkm <-
+  eset_object(
+    expression_data = fpkm,
+    phenotype_data = clinical_data,
+    feature_data = gene_annotation
+  )
+
+```
+
+
+<!--------------------------------------------------------------->
+<!--                                                           -->
+<!--                 eSet object annotation                    -->
+<!--                                                           -->
+<!--------------------------------------------------------------->
+
+<!--------------------->
+<!-- Gene annotation -->
+<!--------------------->
+
+<!-- We propose a template of code to annotate genes with different characteristics (eg biotype, aliases) -->
+<!-- Doc for annotDBI https://bioconductor.org/packages/devel/bioc/vignettes/AnnotationDbi/inst/doc/IntroToAnnotationPackages.pdf -->
+
+
+```{r}
+library(org.Hs.eg.db)
+library(AnnotationDbi)
+```
+
+
+```{r gene annotation, eval = TRUE}
+feature_annot <- AnnotationDbi::select(org.Hs.eg.db, # database
+                                     keys = eset_count %>% rownames(),  # data to use for retrieval
+                                     columns = c("SYMBOL", "GENETYPE","GENENAME"), # information to retreive for given data
+                                     keytype = "SYMBOL") %>% 
+                                     mutate(across(GENETYPE, ~ relevel(factor(GENETYPE), ref = "protein-coding"))) %>% 
+                                     arrange(GENETYPE) %>% 
+                                     mutate(duplicate = duplicated(SYMBOL)) %>%
+                                     filter(duplicate == FALSE) %>%
+                                     dplyr::select(-duplicate) %>%
+                                     arrange(SYMBOL)
+                                      
+
+new_gene_annotation <-  left_join(gene_annotation, feature_annot, by = c(  "GeneID" = "SYMBOL" )) %>% 
+                        data.frame()
+
+rownames(new_gene_annotation) <- new_gene_annotation$GeneID 
+
+eset_count <- update_eset_object(eset = eset_count, feature_data = new_gene_annotation)
+eset_tpm <- update_eset_object(eset = eset_tpm, feature_data = new_gene_annotation)
+eset_fpkm <- update_eset_object(eset = eset_fpkm, feature_data = new_gene_annotation)
+```
+
+
+<!-------------------------------------->
+<!-- Sample annotation : alignment QC -->
+<!-------------------------------------->
+
+<!-- This code allows to annotate samples with quality metrics from the alignment pipeline RNAExp_v2.1 -->
+<!-- These metrics are stored in the folder /OUTPUT/IV_MultiQC/multiqc_data -->
+
+
+```{r sample qc annotation, eval = FALSE}
+path = "/OUTPUT/IV_MultiQC/multiqc_data/"
+```
+
+
+```{r, eval = FALSE}
+saveRDS(eset_count, eset_tpm, eset_fpkm, file = "./data/eset_raw.Rds")
+```

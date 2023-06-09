@@ -1,0 +1,418 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                                    Results Exploration                                  -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+<!-- This script proposes several tables an graphics to describe the results                 -->
+<!-- It handles all contrasts simultaneously                                                 -->
+<!-- Results can be resented with a tab per contrast or with join plots                      -->   
+<!-- User can decide of its representation type and is encouraged to propose new ones        -->   
+
+
+<!-- Loading useful libraries --->
+```{r}
+library(purrr)
+library(knitr)
+library(flextable)
+library(ggpubr)
+library(tidyr)
+```
+
+## **Results exploration**
+
+### **Summary of DEGs (on `r nrow(DEA_res$data[[1]])` genes)** {.tabset}
+
+<!-- Creates a tab with the summary for each contrast  -->
+
+```{r, results= 'asis', echo = FALSE, eval= TRUE}
+cat("\n")
+purrr::pwalk(DEA_res,
+             function(data, contrast,  ...) {
+               
+               cat(paste0("  \n#### ", contrast, " \n"))
+               cat("\n")
+               cat(knitr::knit_print(
+                 table_deg_significant(
+                   result_table = data,
+                   foldchange_column = "FC",
+                   foldchange_threshold = c(1.3, 1.5, 2),
+                   padj_column = "FDR",
+                   padj_threshold = c(0.05, 0.1, 0.2),
+                   interactive = interactive
+                 )))
+              })
+```
+
+:::conclusion
++ AAA and CCC produce nice gene signatures
+
++ BBB has no DEGs whatever the thresholds
+:::
+
+### **p-value distribution**
+
+<!-- Creates a plot with all p-value histograms -->
+
+```{r, fig.width=15, fig.height=5, fig.fullwidth=TRUE}
+pmap(DEA_res, function(data, contrast, ...) {
+  draw_pvalue_histogram(
+    data,
+    "pvalue",
+    pi0_estimate = TRUE,
+    alpha = 0.05
+  )  
+  
+})  %>% ggpubr::ggarrange(
+  plotlist = .,
+  nrow = 1,
+  labels = paste(DEA_res$contrast),
+  common.legend = TRUE,
+  legend = "bottom",
+  vjust = 1.2
+) %>%   print()
+
+```
+
+:::conclusion
++ p-value distributions of AAA and CCC show important signals but not for BBB
+:::
+
+
+
+### **Table of results** {.tabset}
+
+<!-- Creates a tab with the table for each contrast  -->
+
+```{r, results='asis', fig.width= 12, fig.height=8 , eval=TRUE, echo=FALSE}
+purrr::pwalk(DEA_res,
+             function(data, contrast, DEgenes, ...) {
+               cat("  \n  \n")
+               cat(paste0(
+                 "  \n#### ",
+                 contrast,
+                 " (",
+                 nrow(DEgenes),
+                 " genes differentially expressed) \n"
+               ))
+
+               # if (nrow(DEgenes) > 0) {
+                 cat("\n")
+                 cat("::::mycolumns")
+                 cat("\n")
+                 cat(":::mycolumn")
+                 cat("\n")
+                 cat(knitr::knit_print(
+                   display_table(
+                     DEgenes,
+                     interactive = interactive, 
+                     # color_shade_column = "FDR",
+                     bar_column = c("FDR","FC"),
+                     highlighted_row = FC > 10 | FC < -10,
+                     highlighted_color = "lightblue",
+                     nmax_display = 10
+                   )
+                 ))
+
+                 cat("\n")
+                 cat(":::")
+                 cat("\n")
+                 cat("::::")
+                 cat("\n")
+               # }
+               cat("\n")
+
+             })
+
+```
+
+### **Table of results for all contrasts** 
+
+<!-- Creates a table of results for all contrasts  -->
+
+::::mycolumns
+
+:::mycolumn
+
+```{r}
+
+# Create a result table with different contrasts dysplayed in columns
+fulltable <-
+  DEA_res %>% dplyr::select(contrast, data) %>% tidyr::unnest() %>%
+  tidyr::pivot_wider(
+    id_cols = "Genes",
+    names_from = "contrast",
+    values_from = c("FC", "FDR")
+  ) %>% mutate(across(starts_with("FC_"), ~ sign(.) * log2(abs(.)), .names = "log2{.col}")) # to get log2 FC as well
+
+display_table(
+  fulltable,
+  interactive = TRUE,
+  # color_shade_column = "FDR",
+  bar_column = paste0("FC_", DEA_res$contrast),
+  highlighted_color = "lightblue",
+  nmax_display = 10
+)
+
+```
+
+:::
+
+::::
+
+###
+
+
+### **Volcano plots** {.tabset}
+
+<!-- Creates a tab with the plot for each contrast  -->
+
+```{r, results='asis', fig.width= 8, fig.height=6}
+purrr::pwalk(DEA_res,
+             function(data, contrast, ...) {
+               cat(paste0("  \n#### ", contrast , "  \n"))
+               draw_volcano(
+                 data = data,
+                 col_log2fc = "log2FC",
+                 col_signif = "pvalue",
+                 col_label = "Genes",
+                 fc_cutoff = 1.3,
+                 signif_cutoff = 0.05,
+                 type = c("pv"),
+                 labelled = data %>% pull(Genes) %>% head(100),
+                 #focused = c("C1QA", "C1QB", "C1QC"),
+                 shape = c(17, 1, 16),
+                 alpha = c(0.9, 0.4, 0.7),
+                 size = c(5, 2, 2),
+                 legend = TRUE
+                 )   %>% print()
+               cat("\n")
+               
+             })
+
+  
+```
+
+###
+
+:::info
++ CCC has mostly down-regulated genes compared to AAA that has both
+
++ FC are higher for CCC 
+:::
+
+
+
+### **Heatmap**  {.tabset}
+
+```{r, fig.width= 8, fig.height=7}
+# Select gene list for heatmap
+gene_list = DEA_res$DEgenes %>% purrr::map( ~ .x) %>% bind_rows()  %>%  pull(Genes)
+
+# Plot
+draw_heatmap(
+  filter_features_from_values(
+    eset_count_filtered_log2,
+    values = gene_list,
+    column = "GeneID"
+  ),
+  column_annotation_names = c("Treatment", "Donor"),
+  column_palette_selection = c("dark2", "nejm"),
+  show_row_names = FALSE,
+  name = "Exprs",
+  scale_data = TRUE,
+  column_title = "Heatmap of expression for genes DE in at least one contrast", 
+  # cluster_rows = FALSE,
+  # cluster_columns = FALSE,
+  interactive = FALSE
+)
+```
+
+###
+
+:::conclusion
++ BBB and placebo have opposite effect compared to AAA and CCC on DEGs
+:::
+
+
+### **Gene visualization**
+
+#### Box plots top 10 Up-regulated DEG {.tabset}
+
+<!-- Creates a tab with the plots for each contrast  -->
+
+```{r, results='asis', fig.width=12, fig.height=8 , warnings = FALSE}
+purrr::pwalk(DEA_res,
+             function(DEgenes, contrasts, ...) {
+               cat("  \n  \n")
+               cat(paste0("  \n##### ",
+                          contrasts,
+                          "\n"))
+               if (nrow(DEgenes) > 0) {
+                 boxplottop20 <-
+                   purrr::map(
+                     DEgenes %>% filter(FC >0) %>% slice_max(FC, n = 10) %>% pull(Genes),
+                     ~
+                       draw_boxplot((
+                         eset_tpm %>% filter_features_from_values(values = .x, column = "GeneID")
+                       ),
+                       col_x = "Treatment",
+                       col_y = .x,
+                       col_color = "Treatment",
+                       y_transformation  = ~log2(. + 1),
+                       palette  = "dark2",
+                       hline_threshold  = log2(esti_tpm + 1), 
+                       title = .x,
+                       add_point = "jitter_on_x"
+                       )) %>% 
+                   ggpubr::ggarrange(plotlist = .,
+                                     nrow = ifelse(nrow(DEgenes) < 5, 1, 2),
+                                     ncol = min(5, nrow(DEgenes)),
+                                     common.legend = TRUE,
+                                     legend = "bottom") %>%
+                   print()
+                 cat("\n")
+
+               }
+               cat("\n")
+             })
+```
+
+
+
+#### Box plots top 10 Down-regulated DEG {.tabset}
+
+<!-- Creates a tab with the plots for each contrast  -->
+
+```{r, results='asis', fig.width=12, fig.height=8 , warnings = FALSE}
+purrr::pwalk(DEA_res,
+             function(DEgenes, contrasts, ...) {
+               cat("  \n  \n")
+               cat(paste0("  \n##### ",
+                          contrasts,
+                          "\n"))
+               if (nrow(DEgenes) > 0) {
+                 boxplottop20 <-
+                purrr::map(
+                     DEgenes %>% 
+                       filter(FC <0) %>% 
+                       slice_min(FC, n = 10) %>% 
+                       pull(Genes),
+                     ~ draw_boxplot((eset_tpm %>% 
+                                       filter_features_from_values(values = .x, 
+                                                                   column = "GeneID")),
+                                    col_x = "Treatment",
+                                    col_y = .x,
+                                    col_color = "Treatment",
+                                    y_transformation  = ~log2(. + 1),
+                                    palette  = "dark2",
+                                    hline_threshold  = log2(esti_tpm + 1), 
+                                    title = .x,
+                                    add_point = "jitter_on_x")) %>% 
+                   ggpubr::ggarrange(
+                     plotlist = .,
+                     nrow = ifelse(nrow(DEgenes) < 5, 1, 2),
+                     ncol = min(5, nrow(DEgenes)),
+                     common.legend = TRUE,
+                     legend = "bottom"
+                   ) %>%   
+                   print()
+                 cat("\n")
+               }
+               cat("\n")
+             })
+```
+
+
+#### Focus on a particular gene {.tabset}
+
+##### Static version with pvalues
+
+```{r, fig.width=7, fig.height=5}
+# Select gene of interest
+gene_interest <- "CSTA"
+
+# Get stat and pv from DEA
+stat <- 
+  pmap(DEA_res, 
+       function(data, contrast, ...) {
+         data %>% 
+           filter(., Genes == gene_interest) %>% 
+           select(., c(Genes, FC, FDR)) %>% mutate(contrast = contrast)}) %>% 
+  bind_rows() %>% 
+  separate(contrast, c("group1", "group2"), sep = "_vs_")
+
+
+# Plot
+draw_boxplot(
+  eset_tpm %>%
+    filter_features_from_values(values = gene_interest,
+                                column = "GeneID"),
+  col_x = "Treatment",
+  col_y = gene_interest,
+  col_color = "Treatment",
+  y_transformation  = ~ log2(. + 1),
+  palette  = "dark2",
+  hline_threshold  = log2(esti_tpm + 1),
+  title = "CSTA gene",
+  add_point = "jitter_on_x",
+  stat_to_display = stat) + 
+  labs(title = "CSTA gene")
+
+```
+
+##### Interactive version without pvalues
+
+```{r, fig.width=7, fig.height=5}
+# draw_boxplot(
+#   eset_tpm %>% 
+#     genes_filter_fromlist(gene_list = gene_interest, 
+#                           colname_fdata = "GeneID"),
+# x = "Treatment",
+# y_filter = gene_interest,
+# exprs_trans = ~log2(. + 1),
+#   y_unit = "tpm",
+# palette = "Dark2",
+# background_threshold = log2(esti_tpm + 1),
+# background_threshold_name = "           Cutoff",
+# title = "C1QA gene",
+# interactive = TRUE
+# ) 
+
+```
+
+
+
+#### **Profile plots** {.tabset}
+
+##### Static version
+
+```{r, fig.width=7, fig.height=5}
+draw_profile(
+  eset_tpm,
+  col_y = gene_interest,
+  col_x = "Treatment",
+  col_group = "Donor",
+  col_color = "Donor",
+  palette  = "accent",
+  point_size = 1,
+  hline_threshold  = log2(esti_tpm + 1),
+  y_transformation  = ~ log2(. + 1)) + 
+  labs(title = "CSTA gene")
+
+```
+
+##### Interactive version
+
+```{r, fig.width=7, fig.height=5}
+# draw_profileplot(eset_tpm,
+#                  x = "Treatment",
+#                  y_filter ="A1BG",
+#                  groupby = "Donor",
+#                  y_unit = "tpm",
+#                  exprs_trans = ~log2(. + 1),
+#                  palette = "Dark2",
+#                  background_threshold = NULL,
+#                  interactive = TRUE)
+```
+

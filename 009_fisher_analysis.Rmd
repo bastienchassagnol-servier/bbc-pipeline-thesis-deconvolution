@@ -1,0 +1,191 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                                   Enrichment analysis                                   -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+```{r, echo = FALSE}
+library(msigdbr)
+library(clusterProfiler)
+library(fgsea)
+library(enrichplot)
+library(ggstance)
+library(forcats)
+```
+
+# **Enrichment Analysis**
+
+<!--------------------------------------------------------------->
+<!--                                                           -->
+<!--                  Pathway database selection               -->
+<!--                                                           -->
+<!--------------------------------------------------------------->
+
+```{r}
+# MSigDB
+m_df = msigdbr(species = "Homo sapiens", category = "H")
+m_list = m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+
+enrichDB <- m_df %>%
+  dplyr::select(gs_name, gene_symbol)
+
+# Reactome
+# enrichDB <- msigdbr::msigdbr(species = "Homo sapiens",
+#                  category = "C2",
+#                  subcategory = "REACTOME") %>% select(gs_name, gene_symbol)
+
+# KEGG
+# enrichDB <- msigdbr::msigdbr(species = "Homo sapiens",
+#                  category = "C2",
+#                  subcategory = "KEGG") %>% select(gs_name, gene_symbol)
+
+```
+
+<!--------------------------------------------------------------->
+<!--                                                           -->
+<!--                       Fisher approach                     -->
+<!--                                                           -->
+<!--------------------------------------------------------------->
+
+## **Fisher approach**
+
++ Fisher enrichment analysis is based on Fisher's exact test which is a hypergeometric test of over-representation applied to a contingency table comparing a list of DEGs and the list of genes of a given pathway
+
++ We consider, as a reference geneset, all genes available before the pre-processing, and genesets of interest based on DEGs with the FC and p-value threshold used for the differential expression analysis
+
+
+```{r}
+# Running Fisher test
+DEA_res <- DEA_res %>% mutate(Fisher_results = purrr::map(
+    DEgenes,
+    ~ .x %>% pull(Genes) %>% fisher_enrichment(
+    significative_genes_list = .  ,
+    background_genes = rownames(eset_count),
+    pathways_database = enrichDB
+  )
+  ))
+
+# Calculation of the completeness of each pathway for graphical representation
+completnesse_data <- completeness_calculation(
+  analyzed_data = fData(eset_count),
+  gene_colname_data = "GeneID",
+  reference_database = enrichDB,
+  pathway_colname_reference = "gs_name",
+  gene_colname_reference =  "gene_symbol"
+)
+
+
+# adding formatted Fisher results object to DEA_res
+
+DEA_res <- DEA_res %>% mutate(
+  Fisher_results_4graph = purrr::map(
+    Fisher_results,
+    function(.x){
+      if(is.null(.x)){
+        NULL
+      }else{
+        .x %>% res_format_enrichment(., type = "fisher")
+      }
+    } 
+  )
+)
+
+DEA_res <- DEA_res %>% mutate(
+  Fisher_results_4graph = purrr::map(
+    Fisher_results_4graph,
+    function(.x){
+      if(is.null(.x)){
+        NULL
+      }else{
+        .x %>% left_join(., completnesse_data)
+      }
+    } 
+  )
+)
+
+```
+
+
+<!--------------------------------------------------------------->
+<!--                                                           -->
+<!--                  Pathways visualization                   -->
+<!--                                                           -->
+<!--------------------------------------------------------------->
+
+
+## **Main significant pathways - barplots**  {.tabset}
+
+
+:::info
++ The x-axis of the plot displays the geneRatio that represents the relative proportion of DEGs in a pathway
+
++ GeneRatio = #{genes in the overlap (DEGs geneset) $\bigcap$ (genes of the pathway)} / #{genes in the overlap (DEGs geneset) \bigcap (genes of ALL pathways of the selected database)}
+
++ At the end of each bar is displayed the completeness that represents the amount of genes of the pathway present in the reference gene list
+
++ Completeness = #{genes in the pathway} / #{genes in the reference geneset}
+
+:::
+
+
+<!-- Creates a tab with the plot for each contrast  -->
+
+```{r, results='asis', fig.width= 8, fig.height=6}
+purrr::pwalk(DEA_res ,
+             function(Fisher_results_4graph, contrast, ...) {
+               cat(paste0("  \n### ", contrast , "  \n"))
+               if (!is.null(Fisher_results_4graph)) {
+               draw_barplot_score (
+                 Fisher_results_4graph,
+                 xlabel = "GeneRatio",
+                 pathway_colname = "ID",
+                 pvalue_colname = "FDR",
+                 display_bar_value = "Completeness",
+                 number_display = 15,
+                 up_down_fgsea = FALSE,
+                 type = "fisher",
+                 bar_width = 0.6, 
+                 log_pvalue =  TRUE
+               ) %>% print()
+               }
+               cat("\n")
+               
+             })
+```
+
+
+
+## **Main significant pathways - dotplots**  {.tabset}
+
+<!-- Creates a tab with the plot for each contrast  -->
+
+```{r, results='asis', fig.width= 8, fig.height=6}
+purrr::pwalk(DEA_res %>% filter(contrast != "Ox40_vs_Iso"),
+             function(Fisher_results_4graph, contrast, ...) {
+               cat(paste0("  \n### ", contrast , "  \n"))
+               if (!is.null(Fisher_results_4graph)) {
+                 draw_dotplot_enrichment(
+                   enrichment_results = Fisher_results_4graph,
+                   xlabel = "GeneRatio",
+                   pathway_size_colname = "pathway_size",
+                   pathway_colname = "Description",
+                   pvalue_colname = "FDR",
+                   number_display = 10,
+                   display_dot_value = "Completeness",
+                   up_down_fgsea = TRUE,
+                   type = "fisher",
+                   log_pvalue = TRUE
+                 )   %>% print()
+               }
+               cat("\n")
+               
+             })
+
+```
+
+##
+
+:::conclusion
++ Interesting pathways can be identified for both AAA and CCC
+:::
+

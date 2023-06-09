@@ -1,0 +1,306 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                                   Enrichment analysis                                   -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+```{r, echo = FALSE}
+library(dplyr)
+library(msigdbr)
+library(clusterProfiler)
+library(fgsea)
+library(enrichplot)
+library(ggplot2)
+library(ggstance)
+library(forcats)
+
+# load("/HPC_projets/pexmvd/mubz_cb/Methodo/BMK_packages/DEAres.RData")
+
+```
+
+# **Enrichment Analysis**
+
+<!--------------------------------------------------------------->
+<!--                                                           -->
+<!--                  Pathway database selection               -->
+<!--                                                           -->
+<!--------------------------------------------------------------->
+
+```{r}
+# mSigDB
+m_df = msigdbr(species = "Homo sapiens", category = "H")
+m_list = m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+
+enrichDB <- m_df %>%
+  dplyr::select(gs_name, gene_symbol)
+
+# Reactome
+# enrichDB <- msigdbr::msigdbr(species = "Homo sapiens",
+#                  category = "C2",
+#                  subcategory = "REACTOME") %>% select(gs_name, gene_symbol)
+
+# KEGG
+# enrichDB <- msigdbr::msigdbr(species = "Homo sapiens",
+#                  category = "C2",
+#                  subcategory = "KEGG") %>% select(gs_name, gene_symbol)
+
+```
+
+<!--------------------------------------------------------------->
+<!--                                                           -->
+<!--                       fGSEA apprpach                      -->
+<!--                                                           -->
+<!--------------------------------------------------------------->
+
+## **fGSEA approach**
+
+
++ fGSEA enrichment analysis corresponds to a pre-ranked version of GSEA. A metric is selected and calculated for each gene that are then ranked accordingly. This metric is then passed to a classical GSEA analysis. An normalized enrichment score (NES) is provided for each pathway along with useful indicators helping the interpretation.
+
++ We consider a ranking metric for each gene that is based on the results for the differential expression
+
+$$ sign(FC) \times(-log_{10}(\text{raw pvalue})) $$
+
++ The reference set of genes are the `r nrow(DEA_res$data[[1]])` genes that passed the pre-processing filters
+
+
++ Significant pathways are selected with a $FDR\leq 0.05$ and ordered by NES
+
+
+```{r}
+# Adding the fgseascores and results to the DEA_res object
+
+# fGSEA scores
+DEA_res <- DEA_res %>% mutate(fGSEA_scores = purrr::map(
+  data,
+  ~ .x %>% fgsea_ranked_score(
+    deg_results = .,
+    fc_label = "FC",
+    pvalue_label = "pvalue",
+    gene_label = "Genes"
+  )
+))
+
+
+# Calculation of the completeness of each pathway for graphical representation
+completnesse_data <- completeness_calculation(
+  analyzed_data = fData(eset_count_filtered),
+  gene_colname_data = "GeneID",
+  reference_database = enrichDB,
+  pathway_colname_reference = "gs_name",
+  gene_colname_reference =  "gene_symbol"
+)
+
+# Running fGSEA
+
+# IMPORTANT : fGSEA uses random walk and permutation procedures to estimate pvalues. It is necessary to set a seed to have reproducible results when runing several time this code
+
+set.seed(1234)
+
+# adding fgsea results object to DEA_res
+DEA_res <- DEA_res %>% mutate(fGSEA_results = purrr::map(
+  fGSEA_scores,
+  ~ .x %>% fgsea_enrichment(
+    statistics_score = .,
+    pathways_database = enrichDB,
+    pvalue_cutoff = 1
+  ) 
+))
+
+# adding formatted fgsea results object to DEA_res
+
+DEA_res <- 
+  DEA_res %>% 
+  mutate(fGSEA_results_4graph = purrr::map(
+    fGSEA_results,
+    ~ .x %>% res_format_enrichment(., type = "fgsea")
+  )
+)
+
+DEA_res <- 
+  DEA_res %>% 
+  mutate(fGSEA_results_4graph = purrr::map(
+    fGSEA_results_4graph,
+    ~ .x %>% left_join(., completnesse_data)
+  )
+)
+
+```
+
+### **Table of results for all contrasts** 
+
+<!-- Creates a table of results for all contrasts  -->
+
+::::mycolumns
+
+:::mycolumn
+
+```{r}
+# Full table of pathways for all contrasts
+
+fulltable_pathways <-
+  DEA_res %>% dplyr::select(contrast, fGSEA_results_4graph) %>% tidyr::unnest() %>%
+  tidyr::pivot_wider(
+    id_cols = c("ID", "pathway_size"),
+    names_from = "contrast",
+    values_from = c("NES", "FDR")
+  )
+
+# Display table
+display_table(
+  fulltable_pathways,
+  interactive = TRUE,
+  # color_shade_column = "FDR",
+  bar_column = paste0("NES_", DEA_res$contrast),
+  highlighted_color = "lightblue",
+  nmax_display = 10
+)
+```
+
+:::
+
+::::
+
+
+<!--------------------------------------------------------------->
+<!--                                                           -->
+<!--                  Pathways visualization                   -->
+<!--                                                           -->
+<!--------------------------------------------------------------->
+
+
+### **Main significant pathways - barplots**  {.tabset}
+
+:::info
++ The x-axis of the plot displays the NES
+
++ At the end of each bar is displayed the completeness that represents the amount of genes of the pathway present in the reference gene list
+
++ Completeness = #{genes in the pathway} / #{genes in the reference geneset}
+
+:::
+
+<!-- Creates a tab with the plot for each contrast  -->
+
+```{r, results='asis', fig.width= 8, fig.height=6}
+purrr::pwalk(DEA_res,
+             function(fGSEA_results_4graph, contrast, ...) {
+               cat(paste0("  \n#### ", contrast , "  \n"))
+               draw_barplot_score(
+                 enrichment_results = fGSEA_results_4graph,
+                 xlabel = "NES",
+                 pathway_colname = "ID",
+                 pvalue_colname = "FDR",
+                 display_bar_value = "Completeness",
+                 number_display = 20,
+                 up_down_fgsea = TRUE,
+                 type = "fgsea", 
+                 log_pvalue = TRUE
+               ) %>% print()
+               cat("\n")
+               
+             })
+
+```
+
+
+
+### **Main significant pathways - dotplots**  {.tabset}
+
+<!-- Creates a tab with the plot for each contrast  -->
+
+```{r, results='asis', fig.width= 8, fig.height=6}
+purrr::pwalk(DEA_res,
+             function(fGSEA_results_4graph, contrast, ...) {
+               cat(paste0("  \n#### ", contrast , "  \n"))
+               draw_dotplot_enrichment(
+                 fGSEA_results_4graph,
+                 xlabel = "NES",
+                 pathway_colname = "ID",
+                 pvalue_colname = "FDR",
+                 display_dot_value = "Completeness",
+                 pathway_size_colname = "pathway_size",
+                 number_display = 10,
+                 up_down_fgsea = TRUE,
+                 type = "fgsea",
+                 log_pvalue = TRUE
+               ) %>% print()
+               cat("\n")
+
+             })
+```
+
+##
+
+:::conclusion
++ Several pathways are common between the 3 treatments even though no genes were DEGs for BBB
+:::
+
+### **Pathway visualization** {.tabset} 
+
+#### ES plot of the top 10 Up-regulated pathways {.tabset}
+
+<!-- Creates a tab with the plots for each contrast  -->
+
+```{r, results='asis', fig.width=12, fig.height=8 , warnings = FALSE}
+purrr::pwalk(DEA_res,
+             function(fGSEA_results, contrasts, ...) {
+               cat("  \n  \n")
+               cat(paste0("  \n##### ",
+                          contrasts,
+                          " {.tabset} \n"))
+               if (nrow(fGSEA_results@result %>% filter(NES > 0)) > 0) {
+                 purrr::map(fGSEA_results@result %>% filter(NES > 0) %>% slice_min(p.adjust, n = 10) %>% pull(Description),
+                            function(desc) {
+                              cat("  \n  \n")
+                              cat(paste0("  \n###### ",
+                                         desc,
+                                         " \n"))
+                              draw_running_score(fGSEA_results, pathway_name = desc) %>% print()
+                              cat("\n")
+                            })
+                 
+                 cat("\n")
+                 
+               }
+               cat("\n")
+             })
+```
+
+
+#### ES plot of the top 10 Down-regulated pathways {.tabset}
+
+<!-- Creates a tab with the plots for each contrast  -->
+
+```{r, results='asis', fig.width=12, fig.height=8 , warnings = FALSE}
+purrr::pwalk(DEA_res,
+             function(fGSEA_results, contrasts, ...) {
+               cat("  \n  \n")
+               cat(paste0("  \n##### ",
+                          contrasts,
+                          "\n"))
+               if (nrow(fGSEA_results@result %>% filter(NES<0)) > 0) {
+                 purrr::map(fGSEA_results@result %>% filter(NES < 0) %>% slice_min(p.adjust, n = 10) %>% pull(Description),
+                            function(desc) {
+                              cat("  \n  \n")
+                              cat(paste0("  \n###### ",
+                                         desc,
+                                         " \n"))
+                              draw_running_score(fGSEA_results, pathway_name = desc) %>% print()
+                              cat("\n")
+                            })
+                 
+                 cat("\n")
+                 
+               }
+               cat("\n")
+             })
+```
+
+#### Focus on particular pathways
+
+```{r , fig.width = 5, fig.height = 5}
+
+draw_running_score (DEA_res$fGSEA_results[[1]], pathway_name = 1:3)
+
+```

@@ -1,0 +1,60 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                            Differential Expression analysis                             -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+
+<!-- This script performs group comparison analyses                                          -->
+<!-- It produces a tibble with, for each contrast, its table of results and table of DEGs    -->
+<!-- This tibble is then used in the following script for result exploration                 -->        
+
+<!-- Setting FDR cut-offs  -->
+```{r}
+t_pvalue <- 0.05
+```
+
+
+<!-- /!\ WARNING -->
+<!-- t-test should be used for normally distributed variables compared between two groups   -->
+<!-- Wilcoxon can also be used or non-normal variables and small sample size designs  -->
+<!-- Kruskall-Wallis compares all levels of a comparison variable -->
+
+
+```{r}
+#eset_fpkm <- filter_top_stat(eset_fpkm, stat = "sd", k = 1000, p = NULL)
+
+# Contrasts
+contr_matrix <- c("AAA//Placebo", "BBB//Placebo", "CCC//Placebo")
+
+dea_univariate(microarray_eset, "group")
+
+# Perform group comparison with the chosen test ("t", "wilcoxon", "kruskal")
+
+# For given contrasts
+GC_res <- dea_univariate(eset = eset_fpkm,
+                         var = "Treatment", 
+                         contrasts = contr_matrix,
+                         test = "wilcoxon",
+                         correction =  "BH"
+                         )
+
+# For all possible combinations of treatments
+GC_res <- dea_univariate(eset = eset_fpkm,
+                         var = "Treatment", 
+                         test = "t",
+                         correction =  "BH"
+                         )
+
+# For all treatment together (Kruskal-Wallis test)
+GC_res <- dea_univariate(eset = eset_fpkm,
+                         var = "Treatment", 
+                         test = "kruskal",
+                         correction =  "BH"
+                         )
+
+# Add the tables of significant genes to the results
+GC_res <- GC_res %>% dplyr::mutate(DEgenes = purrr::map(res,
+                       ~ .x %>% filter(p_adj < t_pvalue)))
+
+```

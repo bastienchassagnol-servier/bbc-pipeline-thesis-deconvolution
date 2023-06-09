@@ -1,0 +1,334 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                                     Pre-processing                                      -->
+<!--                                         RNA-seq                                         -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+# **Pre-processing**
+
+<!------------------------------------------------->
+<!--                                             -->
+<!--             Gene filtering                  -->
+<!--                                             -->
+<!------------------------------------------------->
+
+## **Gene filtering **
+
+### Filtering on gene annotations (example with protein coding genes)
+
+<!-- Gene filtering can be performed via a list of sample or a regular expression based on a variable from the fData(eSet) --->
+
+```{r, include = FALSE, eval = FALSE}
+# List of samples to keep
+genes_list <- fData(eset_count) %>%
+  filter(GENETYPE == "protein-coding") %>%
+  dplyr::pull(GeneID)
+
+# Creation of filtered eSet options
+eset_count_filtered_coding <-
+  filter_features_from_values(eset = eset_count,
+                              column = "GeneID",
+                              values =   genes_list)
+
+eset_count_filtered_coding <-
+  filter_features_from_expr(eset = eset_count, GENETYPE == "protein-coding")
+```
+
+### Filtering of low expression genes
+
+<!-- Estimation of background threshold for expression matrices (may take some time) --->
+<!-- /!\ If the algorithm does not converge, a NULL value is returned --->
+<!-- /!\ If the value proposed does not seem relevant, one has to set it manually by inspecting the Kernel plots --->
+<!-- /!\ Estimation takes time so it is advised to do it once and then filled the cutoff value manually for future compilation --->
+
+
+```{r estimate-cutoff, include = FALSE, message = FALSE, warning = FALSE}
+# esti_count <- estimate_cutoff_lowcounts(eset_count %>% exprs)
+# esti_tpm <- estimate_cutoff_lowcounts_norm(eset_tpm %>% exprs)
+esti_count <- 8.1
+esti_tpm <- 1
+```
+
+<!-- Creation of melted datasets for downstream use in the pipeline --->
+
+```{r melt-data, eval = TRUE, include = FALSE, message = FALSE, warning = FALSE}
+count_melt <- pivot_and_join(eset_count)
+tpm_melt <- pivot_and_join(eset_tpm) 
+```
+
+<!-- Kernel plots --->
+
+```{r kernel-plot, include = TRUE, message=FALSE, fig.height = 4, fig.width = 8, fig.align = 'center'}
+
+kernel_count <- draw_kernel(
+  melt_data = count_melt,
+  x_label_kernel = "expression",
+  id_colname = "samples_id",
+  col_color  = "Treatment",
+  palette = "dark2",
+  threshold = log2(esti_count+1),
+  title = "Density plot of raw counts",
+  xlab = "log2(Count + 1)",
+  log2 = TRUE,
+  add_log_value = 1,
+)
+
+kernel_tpm <- draw_kernel(
+  melt_data = tpm_melt,
+  x_label_kernel = "expression",
+  id_colname = "samples_id",
+  col_color  = "Treatment",
+  palette = "dark2",
+  threshold = log2(esti_tpm+1),
+  title = "Density plot of tpm",
+  xlab = "log2(tpm + 1)",
+  log2 = TRUE,
+  add_log_value = 1
+)
+
+ggpubr::ggarrange(kernel_count, kernel_tpm, ncol = 2)
+
+```
+
+<!-- Gene filtering for background noise --->
+<!-- /!\ We only keep genes with an expression superior to esti_xx for at least Nsample, Nsample being the size of the smalest group --->
+<!-- if there is no possibility to define a NSample, use NSample = 10-20% of the total cohort -->
+<!-- /!\ Final genes considered for analysis are the common genes kept for both Counts and tpm  --->
+
+
+```{r gene-filtering-background, include = F}
+NSample <- 6
+
+eset_count_filtered <-
+  filter_background(eset_count, esti_count, NSample)
+eset_tpm_filtered <-
+  filter_background(eset_tpm, esti_tpm, NSample)
+
+common_gene <-
+  intersect(rownames(eset_count_filtered), rownames(eset_tpm_filtered))
+
+eset_count_filtered <-
+  filter_features_from_values(eset = eset_count_filtered,
+                             values = common_gene,
+                             column = "GeneID")
+eset_tpm_filtered <-
+  filter_features_from_values(eset = eset_tpm_filtered,
+                             values = common_gene,
+                             column = "GeneID")
+
+```
+
+:::info
+
+Filtered datasets are composed of `r nrow(eset_count_filtered)` genes
+
+:::
+
+<!-- ### Filtering on most variable genes -->
+
+<!-- Gene filtering on SD or CV --->
+
+```{r gene-filtering-SD, include = FALSE}
+eset_count_filtered_sd <- filter_top_stat(eset_count_filtered, stat = "sd", k = 1000, p = NULL)
+eset_count_filtered_cv <- filter_top_stat(eset_count_filtered, stat = "cv", k = 1000, p = NULL)
+```
+
+<!------------------------------------------------->
+<!--                                             -->
+<!--              Sample filtering               -->
+<!--                                             -->
+<!------------------------------------------------->
+
+## **Sample filtering**
+
+### Example with RIN
+
+<!-- Sample filtering can be performed via a list of sample or a regular expression based on a variable from the pData(eSet) --->
+
+```{r, eval = TRUE}
+# List of samples to keep
+samples_list <- pData(eset_count_filtered) %>% 
+  filter(RIN > 6) %>% 
+  dplyr::pull(SampleID) 
+
+# Creation of filtered eSet options
+eset_count_filtered_RIN <-
+  filter_samples_from_values(eset = eset_count_filtered,
+                             column = "SampleID",
+                             values =   samples_list)
+
+eset_count_filtered_RIN <-
+  filter_samples_from_expr(eset = eset_count_filtered, RIN > 6)
+```
+
+:::warning
+
+We can look at the pData to detect samples with low RIN values
+
+We removed `r ncol(eset_count_filtered) - ncol(eset_count_filtered_RIN)` samples with RIN values < 6
+
+:::
+
+::::mycolumns
+
+:::mycolumn
+
+```{r}
+display_table(pData(eset_count_filtered) %>% dplyr::select(., SampleID, Donor, Treatment, Dose, RIN),
+                   interactive = TRUE,
+                   bar_column = "RIN",
+                   highlighted_row = RIN < 6,
+                   highlighted_color = "lightblue",
+                   nmax_display = 10
+                 )
+```
+
+:::
+
+::::
+
+### Boxplot of RIN variable
+
+<!-- Covariate boxplot --->
+
+```{r, fig.width=6, fig.height=5}
+draw_boxplot(
+  eset_count_filtered,
+  col_y = "RIN",
+  col_x = "Treatment",
+  col_color = "Treatment",
+  palette = "dark2",
+  add_point = "jitter_on_x",
+  point_size = 2
+) + labs(title = "RIN distribution\nby Treatment") 
+
+```
+
+
+### Boxplot of samples
+
+<!-- Samples boxplot --->
+
+```{r, fig.width=11, fig.height=6}
+draw_boxplot(
+  eset_tpm_filtered,
+  col_y = NULL,
+  col_x = "SampleID",
+  col_color = "SampleID",
+  palette = "dark2",
+  add_point = "point",
+  point_size = 1,
+  y_transformation = ~ log2(. + 1),
+  facet_by = "Treatment",
+  scales_facet = "free") +
+  labs(title = "Gene expression per sample\nby Treatment") + 
+  theme(legend.position = "none", 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+
+```
+
+:::info
+
+No obvious outlier is detected expression wise
+
+:::
+
+<!------------------------------------------------->
+<!--                                             -->
+<!--            Data transformation              -->
+<!--                                             -->
+<!------------------------------------------------->
+
+
+
+## **Data normalization**
+
+<!-- Log2(.+1) transformation for downstream use --->
+
+```{r log2transfo, include = F}
+# counts_log2 <- log2(exprs(eset_count_filtered) + 1)
+# 
+# # Creation of an eSet with log2(.+1) expressions
+# eset_count_filtered_log2 <-
+#   create_eset_object(counts_log2,
+#                      pData(eset_count_filtered),
+#                      fData(eset_count_filtered))
+
+eset_count_filtered_log2 <- transfrom_exprs(eset_count_filtered, 
+                                                ~ log2(. + 1))
+
+```
+
+<!-- Vst transformation for downstream use --->
+
+```{r vsttransfo, include = F}
+# Creation of a DESeq dds object to compute vst transformation
+dds <- DESeq2::DESeqDataSetFromMatrix(
+  countData = exprs(eset_count_filtered),
+  colData = pData(eset_count_filtered),
+  design = ~ 1 + Treatment
+) # This model is the model used to direct the vst normalization and can include the variable of interest
+
+# Estimation of vst normalized expression matrix
+counts_vst <- SummarizedExperiment::assay(dds %>% DESeq2::vst(blind = F)) 
+
+# Creation of an eSet with vst normalized expression
+eset_count_filtered_vst <-
+  eset_object(expression_data = counts_vst,
+              phenotype_data = pData(eset_count_filtered), 
+              feature_data = fData(eset_count_filtered))
+```
+
+```{r vst-quality, fig.width=10, fig.height=6 }
+# Boxplot pre vst
+g1 <- draw_boxplot(
+  eset_count_filtered,
+  col_y = NULL,
+  col_x = "SampleID",
+  col_color = "SampleID",
+  palette = "dark2",
+  add_point = "point",
+  point_size = 1,
+  y_transformation = ~ log2(. + 1),
+  #facet_by = "Treatment",
+  hline_threshold = log2(esti_count + 1)) +
+  labs(title = "Gene expression per sample before normalization") +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(), 
+        axis.text.x = element_blank())
+
+
+
+# Boxplot post vst
+g2 <- draw_boxplot(
+  eset_count_filtered_vst,
+  col_y = NULL,
+  col_x = "SampleID",
+  col_color = "SampleID",
+  palette = "dark2",
+  add_point = "point",
+  point_size = 1,
+  #facet_by = "Treatment",
+  hline_threshold = log2(esti_count + 1)) +
+  labs(title = "Gene expression per sample after normalization") +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(), 
+        axis.text.x = element_blank())
+
+ggpubr::ggarrange(g1, g2, nrow = 2)
+```
+
+:::info
+Vst normalization properly produced homogeneous variances among samples 
+:::
+
+<!------------------------------------------------->
+<!--                                             -->
+<!--               Saving datasets               -->
+<!--                                             -->
+<!------------------------------------------------->
+
+<!-- It is advised to save all created eSets to avoid having to rerun the whole script --->
+
+

@@ -1,0 +1,368 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                            Deconvolution of immune composition                          -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+# **Cell type deconvolution**
+
+
+<!-- This script performs Several deconvolution analyses       -->
+<!--    - QuantiSeq                                            -->
+<!--    - MCPcounter                                           -->        
+
++ Deconvolution analysis is performed to evaluate the cell composition of the different samples
+
++ Two methods are considered
+
+  + QuantiSeq
+  + MCPcounter
+  
++ Quantiseq estimates the proportion of cells from different types: B-cells, Macrophages M1, Macrophages M2, Monocytes, Neutrophils, NK cells, T-cells CD4, T-cells CD8, Tregs, Dendritic cells and Other cells
+
++ MCPcounter calculates scores correspnding to several cell types: T-cells, T-cells CD8, Cytotoxic lymphocytes, B lineage, NK cells, Monocytic lineage, Myeloid dendritic cells, Neutrophils, Endothelial cells and Fibroblasts     
+
++ We use << indicate your input matrix >> expression as input to deconvolution algorithms, in order to account for the genes and sample library sizes
+
+:::warning
++ Signatures used for deconvolution are not always completely reliable so caution is needed when interpreting the results
+:::
+
+<!-- INFO -->
+<!-- - Deconvolution algorithm are sample based, ie are applied sample by sample -->
+<!-- - They take as input TPM or FPKM -->
+<!-- - In case of a batch effect, Raw data (pre-combat) are to be used -->
+
+```{r}
+library(immunedeconv)
+library(MultiAssayExperiment)
+library(data.table)
+library(RColorBrewer)
+```
+
+
+```{r}
+# Choose expression matrix for deconvolution in function of the type of technology
+# We advise TPM, FPKM or count vst for RNA-seq or Nanostring and log2(Intensities) for Micro-array
+```
+
+## **Cell composition by Quantiseq**
+
+:::info
+**Quantiseq**
++ The algorithm QuanTIseq performs a deconvolution analysis, based on mixture models, i.e based on an expression matrix it estimates per sample the proportion of several pre-defined cell types (B-cells, Macrophages M1 and M2, Monocytes, Neutrophils, NK cells, T-cells CD4, T-cells CD8, T-regs, Dendritic cells, Others)
+
++ This algorithm does not focus on tumoral cells that, if present, may well be classified in “Others”
+
++ For a given sample, all these proportion sums to 1
+
++ Finotello, F., Mayer, C., Plattner, C. et al. Molecular and pharmacological modulators of the tumor immune contexture revealed by deconvolution of RNA-seq data. Genome Med 11, 34 (2019). https://doi.org/10.1186/s13073-019-0638-6
+:::
+
+```{r quantiseq, fig.width=11, fig.height=6}
+# Running quantiseq
+#
+# We advise using TPM > FPKM > count_vst
+#
+# Quantiseq is based on mixture model of the whole genome expression
+# It is advised to use the full expression matrix: 
+#                - with all protein coding genes + genes from TIL10 signatures
+#                - before filtering for low expression filtering genes
+
+
+# create Quantiseq expression matrix
+data("quantiseq_signature", package = "bbcData")
+
+xp <- eset_tpm %>%
+  filter_features_from_expr(GENETYPE == "protein-coding" | GeneID %in% quantiseq_signature$ID) %>%
+  exprs()
+
+quantiseq <- deconvolute_quantiseq(xp,
+                                  tumor = FALSE,
+                                  # Set to TRUE if we have tumor samples
+                                  arrays = FALSE,
+                                  # Set to TRUE to apply quantile normalization
+                                  scale_mrna = TRUE
+                                  )
+
+# formatting quatiseq results
+quantiseq_melt <- melt(quantiseq)
+colnames(quantiseq_melt) <- c("Cell_composition", "SampleID", "value")
+quantiseq_melt <- left_join(
+  quantiseq_melt %>% data.frame(),
+  pData(eset_tpm) %>% data.frame,
+  by = ("SampleID" = "SampleID")
+)
+```
+
+```{r, fig.width=11, fig.height=6}
+# Color palette to use for quantiseq scores
+color_quantiseq <- c("B.cells"= "lightblue3",
+                     "Macrophages.M1"= "palegreen2",
+                     "Macrophages.M2"= "springgreen3",
+                     "Monocytes"= "seagreen4" ,
+                     "Neutrophils"=  "mediumpurple1",
+                     "NK.cells"= "sienna1",
+                     "T.cells.CD4"= "firebrick1",
+                     "T.cells.CD8"= "indianred1",
+                     "Tregs"= "indianred3",
+                     "Dendritic.cells"= "wheat3" ,
+                     "Other"  = "grey"
+)
+
+
+# Stacked barplot with multiple groups
+ggplot(data = quantiseq_melt) +
+  aes(x = SampleID, y = value, fill = Cell_composition) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = color_quantiseq) + theme_bw()  +
+  facet_grid(cols = vars(Treatment),
+             scales = "free_x",
+             space = "free_x") +
+  labs(x = "Samples", y = "Cumulative %",
+       title = "Cell composition by sample\nQuantiseq approach") +
+  theme(axis.text.x = element_text(
+    angle = 45,
+    hjust = 1,
+    vjust = 0.5
+  ))
+```
+
+:::conclusion
++ Generally speaking, cell composition does not change after treatment  
+:::
+
+## **Cell scoring with MCPcounter** {.tabset}
+
+:::info
+**MCPcounter**
+
++ MCPcounter performs deconvolution by averaging highly specific marker genes that were identified on bulk transcriptomes from purified cells
+
++ It estimates score for T-cells, T-cells CD8, Cytotoxic lymphocytes, B lineage, NK cells, Monocytic lineage, Myeloid dendritic cells, Neutrophils, Endothelial cells and Fibroblasts
+
++ Scores computed by MCPcounter are to be compared across samples (not across cell types) and are proportional to the log-frequency of the cells in the sample (so 2^score is proportional to the frequency)
+
++ Becht, E., Giraldo, N.A., Lacroix, L. et al. Estimating the population abundance of tissue-infiltrating immune and stromal cell populations using gene expression. Genome Biol 17, 218 (2016). https://doi.org/10.1186/s13059-016-1070-5
+:::
+
+<!-- MCPcounter via ImmuneDeconv -->
+
+```{r mcpcounter}
+# Running MCP_counter
+#
+# We advise using TPM > FPKM > count_vst
+# Note that MCP using log2scale data so TPM and FPKM have to be logged. Vst is already logged
+#
+# For MCP counter use all genes, even in background noise
+
+# Running MCPcounter
+xp <- exprs(eset_tpm)
+mcpcounter <- deconvolute_mcp_counter(log2(xp + 1))
+rownames(mcpcounter) <- paste0("MCP_", gsub(" ", "_", rownames(mcpcounter)))
+
+# Formatting MCPcounter results
+# mcpcounter_melt = melt(mcpcounter)
+# 
+# colnames(mcpcounter_melt) = c("Cell_score", "SampleID", "value")
+# 
+# mcpcounter_melt = left_join(
+#   mcpcounter_melt %>% data.frame(),
+#   pData(eset_tpm) %>% data.frame,
+#   by = ("SampleID" = "SampleID")
+# )
+
+```
+
+<!-- eSet with MCP signatures -->
+
+```{r}
+eset_mcp <-
+  eset_object(
+    expression_data = as.matrix(mcpcounter),
+    phenotype_data = pData(eset_tpm),
+    feature_data = data.frame(
+      row.names = rownames(mcpcounter),
+      cell_type = rownames(mcpcounter),
+      cell_type_pretty = gsub("T cells", "T-cells", gsub("_", " ", rownames(mcpcounter)))
+  ))
+```
+
+
+### **Quality of deconvolution analysis**
+
+<!-- Evaluation of the completness of each MCP counter signature in the dataset -->
+
+```{r}
+# Add MCP signature genes info to eset_signature
+data(reference_signatures, package = "bbcData")
+
+mcpcounter_signatures <- reference_signatures %>% filter(grepl("MCP", signature))
+
+new_fdata <- left_join(
+  fData(eset_mcp),
+  summary_signature(mcpcounter_signatures, eset_tpm, col_f_name = "GeneID"),
+  by = c( "cell_type" = "signature")
+)
+rownames(new_fdata) <- new_fdata$cell_type
+
+eset_mcp <- eset_mcp %>% update_eset_object(., feature_data = new_fdata)
+
+```
+
+
+<!-- Display completness -->
+
+
+```{r}
+display_table(
+  eset_mcp %>% fData() %>% select(completeness_frac, completeness_pct) %>% 
+    set_names(c("#(available genes)/#(genes in signature)", "%")
+              ),
+)
+```
+
+### **Score comparison**
+
+:::info
+**Evaluation of MCPcounter scores**
+
++ A non-parametric statistical test is performed to evaluate the significance of each cell type score difference between two (or more) groups
+  
+  + Wilcoxon test is used, in a paired setting when applicable
+:::
+
+
+<!-- Group comparison to evaluate MCP scores different in average between contrasts -->
+
+
+```{r}
+# Wilcoxon test for each signature between proposed groups
+
+contr_matrix <- c("AAA//Placebo", "BBB//Placebo")
+
+# independent samples
+DEAsig_res <- dea_univariate(
+  eset = eset_mcp,
+  var = "Treatment",
+  contrasts = contr_matrix,
+  test = "wilcoxon",
+  correction =  "bonferroni"
+)
+
+# paired samples
+DEAsig_res <- dea_paired(
+  eset = eset_mcp,
+  var = "Treatment",
+  pairing = "Donor",
+  contrasts = contr_matrix,
+  test = "wilcoxon",
+  correction = "bonferroni"
+)
+
+## Adding comparison to eset_sig
+# creation of full table with pv for each contrast
+fulltable <-
+  DEAsig_res %>% dplyr::select(contrast, res) %>% tidyr::unnest() %>%
+  tidyr::pivot_wider(
+    id_cols = "features_id",
+    names_from = "contrast",
+    values_from = c("p_value", "p_adj")
+  ) 
+colnames(fulltable) = gsub("//", "_vs_", colnames(fulltable))
+
+# Addiotion of DEAsign res to fData of eset_mcp
+new_fdata <- left_join(
+  fData(eset_mcp),
+  fulltable,
+  by = c( "cell_type" = "features_id")
+)
+rownames(new_fdata) <- new_fdata$cell_type
+
+eset_mcp <- update_eset_object(eset_mcp, feature_data = new_fdata)
+```
+
+<!-- Display results of DEAsig -->
+
+```{r}
+display_table(
+  fulltable,
+  interactive = TRUE,
+  highlighted_row = p_adj_AAA_vs_Placebo  < 0.05 |
+    p_adj_BBB_vs_Placebo < 0.05,
+  highlighted_color = "lightblue",
+  nmax_display = 10, 
+  caption = "In blue are highlighted cell types significantly different in at least one contrast"
+)
+```
+
+### **Graphical evaluation**
+
+
+:::info
++ MCPcounter scores for each cell type are represented in a heatmap split between pre- vs post-treatment states or responders vs non-responders
+
++ Associated pvalues from Wilcoxon test are displayed in the heatmap to help interpreting the score distribution between patient groups
+
++ Also, the completeness of each MCPcounter cell type specific markers set within the dataset is provided to help interpreting the relevance of the calculated score
+:::
+
+
+<!-- Heatmap of MCP scores with possibility to display completness and pvalue from group comparison -->
+
+```{r, fig.width=11, fig.height=8}
+draw_heatmap(
+  eset_mcp,
+  column_annotation_names = c("Treatment", "Donor"),
+  column_split = "Treatment",
+  scale = TRUE,
+  row_annotation_names = c("completeness_pct", "p_adj_AAA_vs_Placebo"),
+  column_palette_selection = c('dark2', 'nejm'),
+  row_palette_selection = c("material_lightblue", "material_lightblue"),
+  show_column_names = T,
+  show_row_names = T,
+  name = "MCP-counter Z-scores",
+  column_title = "Heatmap of MCP-counter scores", 
+  cluster_columns = FALSE, 
+  cluster_rows = FALSE,
+) %>%
+ComplexHeatmap::draw(
+#merge_legend = TRUE,
+heatmap_legend_side = "bottom",
+annotation_legend_side = "bottom"
+)
+```
+
+
+
+<!-- Boxplots of MCP scores -->
+
+```{r, results='asis', fig.width=11, fig.height=6}
+purrr::map(unique(eset_mcp %>% rownames()),
+           function(.x) {
+             cat("  \n  \n")
+             cat(paste0("  \n#### ",   gsub(" ", "", .x),   "\n"))
+             print(
+               draw_boxplot((
+                 eset_mcp %>% filter_features_from_values(values = .x, column = "cell_type")
+               ),
+               col_x = "Treatment",
+               col_y = .x,
+               col_color = "Treatment",
+               palette  = "dark2",
+               title = .x,
+               add_point = "jitter_on_x"
+               )
+             )
+             cat("\n")
+           })
+
+```
+
+###
+
+:::conclusion
++ Results are quite consistent between QuantiSeq and MCPcounter for cell types evaluated by both approaches
+:::
+
+

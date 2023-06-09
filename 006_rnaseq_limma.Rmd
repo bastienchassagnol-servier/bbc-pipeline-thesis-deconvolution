@@ -1,0 +1,288 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                            Differential Expression analysis                             -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+```{r}
+library(limma)
+```
+
+# **Differential expression analysis**
+
+## **Statistical modeling**
+
+:::info
++ We consider the statistical statistical model
+
+$$Expression \sim \textit{Treatment} + Donor $$
+
+where Treatment are fixed effects and Donor a random effect to account for sample pairing
+
++ We use the R package `Limma` to perform the differential expression analysis
+
++ Normalized expressions are modeled through a Normal distribution and fitted using a Linear Model. A moderated t-statistics is then derived through a Bayesian estimation of the variance.
+
++ Fold-change (FC) and adjusted p-values (FDR of Benjamini-Hochberg correction) are used to identify differentially expressed genes (DEG)
+
++ We consider significant genes with a $|FC| > 1.3$ and a  $p_{adj} < 0.05$ (FDR)
+
+:::
+
+
+
+<!-- This script performs Limma analysis                                                     -->
+<!-- It produces a tibble with, for each contrast, its table of results and table of DEGs    -->
+<!-- This tibble is then used in the following script for result exploration                 -->        
+
+<!-- Setting FC and FDR cut-offs  -->
+```{r Global-variables}
+t_pvalue <- 0.05
+t_FC <- 1.3
+```
+
+<!------------------------------------------->
+<!--                                       -->
+<!--         Fixed Effects Model           -->
+<!--                                       -->
+<!------------------------------------------->
+
+```{r fixed-effect-model}
+# Without covariates
+model <- model.matrix( ~ 0 + Treatment, data = eset_count_filtered)
+colnames(model) <- c("Placebo", "AAA", "BBB", "CCC")
+
+# With covariates (Treatment preferably first)
+model <- model.matrix( ~ 0 + Treatment + Donor, data = eset_count_filtered)
+colnames(model) <-
+  c("Placebo",
+    "AAA",
+    "BBB",
+    "CCC",
+    "D2",
+    "D3",
+    "D4",
+    "D5",
+    "D6")
+
+# Contrasts
+contr_matrix <- makeContrasts(
+  AAA_vs_Placebo = AAA - Placebo,
+  BBB_vs_Placebo = BBB - Placebo,
+  CCC_vs_Placebo = CCC - Placebo,
+  levels = colnames(model)
+)
+
+# Perform count data normalization to apply Limma
+data_normalized <- dea_limma_normalization(eset_object = eset_count_filtered,
+                                           model = model)
+
+# Skip the dea_limma_normalization step if you already have normalized count and want to use them in Limma
+# and inout data_norm = NULL in dea_limma
+
+# Perform differential expression analysis with Limma
+DEA_res <-
+  dea_limma(eset_object = eset_count_filtered,
+            data_norm = data_normalized,
+            model = model,
+            contr_matrix = contr_matrix, 
+           feature_colname = "Genes")
+
+# Add the tables of DEGs to the results
+DEA_res <- DEA_res %>% dplyr::mutate(DEgenes = purrr::map(data,
+                       ~ .x %>% subset_deg(., "FC", t_FC, "FDR", t_pvalue, order = "FC")))
+
+```
+
+
+<!------------------------------------------->
+<!--                                       -->
+<!--        Random Effects Model           -->
+<!--                                       -->
+<!------------------------------------------->
+
+```{r random-effect-RNASeq}
+# Model specification
+# /!\ do not put random variable here in the model, it is done below
+
+model <- model.matrix( ~ 0 + Treatment , data = eset_count_filtered)
+
+colnames(model) <-
+  c("Placebo",
+    "AAA",
+    "BBB",
+    "CCC")
+
+# Contrasts
+contr_matrix <- makeContrasts(
+  AAA_vs_Placebo = AAA - Placebo,
+  BBB_vs_Placebo = BBB - Placebo,
+  CCC_vs_Placebo = CCC - Placebo,
+  levels = colnames(model)
+)
+
+# Perform count data normalization to apply Limma
+data_normalized <- dea_limma_normalization(eset_object = eset_count_filtered,
+                                           model = model,
+                                           random = TRUE,
+                                           var_random = "Donor")
+
+# Perform differential expression analysis with Limma
+DEA_res <-
+  dea_limma(eset_object = eset_count_filtered,
+            data_norm = data_normalized,
+            model = model,
+            contr_matrix = contr_matrix,
+            random = TRUE,
+            var_random = "Donor", 
+            feature_colname = "Genes")
+
+# Add the tables of DEGs to the results
+DEA_res <- DEA_res %>% dplyr::mutate(DEgenes = purrr::map(data,
+                       ~ .x %>% subset_deg(., "FC", t_FC, "FDR", t_pvalue, order = "FC")))
+
+```
+
+
+<!------------------------------------------->
+<!--                                       -->
+<!--          Continuous covariate         -->
+<!--                                       -->
+<!------------------------------------------->
+
+<!-- FC threshold has to be re-calculated for a continuous variable -->
+
+```{r}
+pData(eset_count_filtered)$Dose = as.numeric(pData(eset_count_filtered)$Dose)
+
+# Re-evaluation of FC threshold for continuous covariate
+t_FC_continuous <- lfc_to_fc(log2(t_FC) / diff(range(eset_count_filtered$Dose)))
+
+```
+
+
+```{r continuous-outcome, eval = F}
+# Model specification
+model <- model.matrix( ~ 0 + Treatment + Dose , data = eset_count_filtered)
+
+colnames(model) <-
+  c("Placebo",
+    "AAA",
+    "BBB",
+    "CCC", 
+    "Dose")
+
+# Contrasts
+coeff_name = "Dose"
+
+# Perform count data normalization to apply Limma
+data_normalized <- dea_limma_normalization(eset_object = eset_count_filtered,
+                                           model = model,
+                                           random = FALSE)
+
+# Perform differential expression analysis with Limma
+DEA_res <-
+  dea_limma(eset_object = eset_count_filtered,
+            data_norm = data_normalized,
+            model = model,
+            coeff_name = coeff_name, 
+            feature_colname = "Genes")
+
+# Add the tables of DEGs to the results
+DEA_res <- DEA_res %>% dplyr::mutate(DEgenes = purrr::map(data,
+                       ~ .x %>% subset_deg(., "FC", t_FC_continuous, "FDR", t_pvalue, order = "FC")))
+
+```
+
+
+
+<!------------------------------------------->
+<!--                                       -->
+<!--          Interaction model            -->
+<!--                                       -->
+<!------------------------------------------->
+
+<!-- The coding of interaction model depends on the type of variables considered (categorical or continuous) -->
+
+<!------------------------------------------->
+<!--     Categorical x Continuous          -->
+<!------------------------------------------->
+
+```{r continuous_outcome, eval = F}
+# Model specification
+pData(eset_count_filtered_vst)$Dose = as.numeric(pData(eset_count_filtered_vst)$Dose)
+
+model <- model.matrix( ~ 0 + Treatment + Treatment:Dose , data = eset_count_filtered)
+
+colnames(model) <-
+  c("Placebo",
+    "AAA",
+    "BBB",
+    "CCC",
+    "Placebo_Dose",
+    "AAA_Dose", 
+    "BBB_Dose", 
+    "CCC_Dose")
+
+# Contrasts
+coeff_name = "AAA_Dose"
+
+# Perform count data normalization to apply Limma
+data_normalized <- dea_limma_normalization(eset_object = eset_count_filtered,
+                                           model = model,
+                                           random = FALSE)
+
+# Perform differential expression analysis with Limma
+DEA_res <-
+  dea_limma(eset_object = eset_count_filtered,
+            data_norm = data_normalized,
+            model = model,
+            coeff_name = coeff_name,
+            feature_colname = "Genes")
+
+# Add the tables of DEGs to the results
+DEA_res <- DEA_res %>% dplyr::mutate(DEgenes = purrr::map(data,
+                       ~ .x %>% subset_deg(., "FC", t_FC, "FDR", t_pvalue, order = "FC")))
+
+```
+
+
+
+<!------------------------------------------->
+<!--     Categorical x Categorical          -->
+<!------------------------------------------->
+
+<!-- ```{r continuous_outcome, eval = F} -->
+<!-- # Model specification -->
+<!-- model <- model.matrix( ~ 0 + Donor + Treatment  , data = eset_count_filtered) -->
+
+<!-- colnames(model) <- -->
+<!--   c("Placebo", -->
+<!--     "AAA", -->
+<!--     "BBB", -->
+<!--     "CCC", -->
+<!--     "Dose") -->
+
+<!-- # Contrasts -->
+<!-- coeff_name = "Dose" -->
+
+<!-- # Perform count data normalization to apply Limma -->
+<!-- data_normalized <- dea_limma_normalization(eset_object = eset_count_filtered, -->
+<!--                                            model = model, -->
+<!--                                            random = FALSE) -->
+
+<!-- # Perform differential expression analysis with Limma -->
+<!-- DEA_res <- -->
+<!--   dea_limma(eset_object = eset_count_filtered, -->
+<!--             data_norm = data_normalized, -->
+<!--             model = model, -->
+<!--             coeff_name = coeff_name, -->
+<!--             feature_colname = "Genes") -->
+
+<!-- # Add the tables of DEGs to the results -->
+<!-- DEA_res <- DEA_res %>% dplyr::mutate(DEgenes = purrr::map(data, -->
+<!--                        ~ .x %>% subset_deg(., "FC", t_FC, "FDR", t_pvalue, order = "FC"))) -->
+
+<!-- ``` -->
+
+

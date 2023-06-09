@@ -1,0 +1,136 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                                     Data Importat                                       -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+
+<!--------------------------------------------------------------------------->
+<!--                                                                       -->
+<!--                             Import from Geo                           -->
+<!--                                                                       -->
+<!--------------------------------------------------------------------------->
+
+ <!-- Import Affymetrix data -->
+
+```{r download-affy-data, eval = TRUE}
+destdir <- "./DATA-Raw" # define location where raw data will be stored
+
+eset_affy_online <- import_normalised_data(GEO = "GSE47875")
+
+affy_alba <- affymetrix_raw <-
+  import_raw_files(microarray_technology = "affymetrix",
+                   eset = eset_affy_online,
+                   destdir = destdir) 
+```         
+
+<!-- Import single color Agilent data -->
+
+```{r download-single-agilent, eval = FALSE}
+single_online_agilent_eset <-
+  import_normalised_data(GEO = "GSE127952")
+
+raw_single_agilent <-
+  import_raw_files(microarray_technology = "agilent_single",
+                   eset = single_online_agilent_eset,
+                   destdir = destdir)
+```
+
+<!-- Import two-color Agilent data -->
+
+```{r download-towcolor-agilent, eval = FALSE}
+twocolor_online_agilent_eset <-
+  import_normalised_data(GEO = "GSE83576")
+
+raw_twocolor_agilent <-
+  import_raw_files(microarray_technology = "agilent_twocolor",
+                   eset = twocolor_online_agilent_eset,
+                   destdir = destdir)
+```
+
+<!-- Import Illumina data -->
+
+```{r download-illumina, eval = FALSE}
+illumina_online_eset <- import_normalised_data(GEO = "GSE27073")
+
+# not run, how to import raw data
+raw_illumina <-
+  import_raw_files(microarray_technology = "illumina",
+                   eset = illumina_online_eset,
+                   destdir = destdir)
+```
+
+                   
+<!--------------------------------------------------------------------------->
+<!--                                                                       -->
+<!--                         Import from DiseaseLand                       -->
+<!--                                                                       -->
+<!--------------------------------------------------------------------------->
+
+
+```{r apiRland-import, eval = FALSE}
+library(dplyr)
+library(tibble)
+
+load("/softhpc/mono/Land_R_API.Rda")
+
+BaseDir_perso <- "/HPC_projets/pexmvd/ymay_cb/LandRAPI/ArrayServerFile/ServerTest05WithLSF/"
+TempDir_perso <-"/HPC_projets/pexmvd/ymay_cb/LandRAPI/temp/Test05LSFServerTmp/"
+
+
+Land.InitiateOshell(
+  MonoPath = "/softhpc/mono/4.0.4/bin/mono",
+  OshellDirectory = "/softhpc/IData/Users/landRApi/R/oshell/",
+  BaseDirectory = BaseDir_perso,
+  TempDirectory = TempDir_perso
+);
+
+#Connect to server
+Land.InitiateLand(Server = "tcp://srsw24:8065", #24 is prod server, 198 is test server
+                  UserID = "ymay_cb",
+                  Password = "ymay_cb", 
+                  LandName = "OncoGEO_B37")
+
+
+# Land.ListLands()
+
+# get metadata to put in pData of eset
+samplesdetails <- Land.DownloadMetaData() %>%
+  filter(ProjectName == "GSE67501")
+
+clinicaldetails <- Land.DownloadClinicalData() %>%
+  filter(ID %in% samplesdetails$ID)
+
+
+# Get rnaseq count/fpkm
+rnaseq_data <- Land.TextDumpArrayLandData(
+  Genes = "(all)",
+  Samples = samplesdetails %>% pull(ID),
+  DataMode = "RnaSeq_Transcript",
+  DownloadGeneLevelData = TRUE,
+  DownloadCounts = TRUE
+)
+
+# Get microarray data at gene or probe level
+microarray_data <- Land.TextDumpArrayLandData(
+  Genes = "(all)",
+  Samples = samplesdetails %>% pull(ID),
+  DataMode = "Expression_Intensity_Probes",
+  #or "Expression_Ratio" for some arrays
+  DownloadGeneLevelData = TRUE
+)
+
+# Put result in an eset object
+eset_microarray <-
+  bmkanalysis::create_eset_object(
+    gene_expression_data = microarray_data$Expression_Intensity_Probes_ByGeneLevel %>%
+      column_to_rownames("GeneID") %>%
+      as.matrix(),
+    phenotype_data = clinicaldetails %>%
+      column_to_rownames("ID"),
+    gene_annotation = NULL
+  )
+
+```
+
+

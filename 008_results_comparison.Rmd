@@ -1,0 +1,126 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                                    Contrasts Comparison                                 -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+
+<!-- Loading useful libraries --->
+
+```{r}
+library(venn)
+library(viridis)
+library(flextable)
+library(ComplexUpset)
+```
+
+# **Treatment comparison**
+
+## **Venn diagram**
+
+```{r, fig.width = 4, fig.height = 4}
+
+# Creates a named list with all contrasts
+list_venn <- pmap(DEA_res, function(DEgenes, ...) {
+  DEgenes %>% pull(Genes)
+})
+
+names(list_venn) <- DEA_res$contrast
+
+# Ven diagram
+NBC = length(list_venn) %>% viridis()
+venn::venn(list_venn, zcolor = NBC)
+```
+
+## **Advanced upset plot**
+
+```{r, fig.width = 7, fig.height = 5}
+dataplot <- binary_membership(list_venn, elt_name = "Genes")
+
+upset(dataplot, colnames(dataplot)[-1])
+
+```
+
+:::warning
++ Most AAA DEGs are also DEGs for CCC
+:::
+
+## **Fold-change concordance plot** {.tabset}
+
+```{r, results='asis', fig.width = 9, fig.height = 7}
+
+# Creates a list of all unique pairs of contrasts
+list_contrast <- combn(DEA_res$contrast, 2) %>% t()
+
+# Creates a tab with the plot for each contrast comparison
+walk2(list_contrast[, 1], list_contrast[, 2],
+      function(.x, .y) {
+        cat(paste0(" \n### ", .x, "_VS_", .y, " \n"))
+        
+        draw_concord(
+  fulltable,
+  col_fc_x = paste("log2FC",.x , sep =  "_"),
+  col_fc_y = paste("log2FC",.y , sep =  "_"),
+  col_pv_x = paste("FDR",.x , sep =  "_"),
+  col_pv_y = paste("FDR",.y , sep =  "_"),
+  th_fc = log2(t_FC),
+  th_pv = t_pvalue,
+  smooth = "lm",
+  bisector = TRUE,
+  stats = c("rho", "R2", "MAPE"),
+  col_label = "Genes", 
+  labs_x = .x, 
+  labs_y = .y, 
+  stat_to_display = "fc",
+  labelled = head(fulltable$Genes, 20)
+)  %>% print
+               cat("\n")
+      })
+```
+
+##
+
+:::conclusion
++ AAA and CCC have similar effect but higher for CCC
+:::
+
+## **Heatmap of log2FC** 
+
+
+```{r, fig.width= 8, fig.height=7, warnings = FALSE}
+
+# Creates a bogus eSet with contrast FC as expression
+eset_forheatmap <- eset_object(
+  expression_data = DEA_res %>% dplyr::select(contrast, data) %>% unnest() %>% pivot_wider(
+    id_cols = Genes,
+    names_from = contrast,
+    values_from = log2FC
+  ) %>% drop_na() %>%  data.frame(row.names = "Genes") %>% as.matrix() ,
+  phenotype_data = data.frame(row.names = DEA_res$contrast, contrast = DEA_res$contrast),
+  feature_data = fData(eset_count_filtered)
+)
+
+# Heatmap
+draw_heatmap(
+  eset_forheatmap %>% filter_features_from_values(
+    values = DEA_res$DEgenes  %>% bind_rows()  %>%  pull(Genes),
+    column = "GeneID"
+  ),
+  column_annotation_names = c("contrast"),
+  column_palette_selection = c("dark2"),
+  # cluster_column = F,
+  row_annotation_names = NULL,
+  show_row_names = FALSE, 
+  name="log2FC", 
+  column_title = "Heatmap of log2FC of genes DE in at least one contrast", 
+  scale_data = FALSE # Do not scale log2FC
+) %>% print()
+
+```
+
+
+##
+
+:::conclusion
++ AAA, BBB and CCC have same direction of effect with different ranges of FC
+:::

@@ -1,0 +1,2 @@
+```{r calltechno, child='210-rnaseq.Rmd'}
+```

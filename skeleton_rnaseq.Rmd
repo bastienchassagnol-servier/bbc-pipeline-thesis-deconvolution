@@ -1,0 +1,169 @@
+---
+title: "RNA-Seq Expression Data Analysis"
+author: "BBC"
+date: "`r Sys.Date()`"
+output: 
+  bbcCorpo::bbc_html:
+    highlight: kate
+    color_logo: blue
+---
+
+```{r setup, include=FALSE}
+options(max.print = "75")
+knitr::opts_chunk$set(
+  echo = FALSE, # For dev version, replace by TRUE for not showing code
+  cache = FALSE,
+  prompt = FALSE,
+  tidy = TRUE,
+  comment = NA,
+  message = FALSE,
+  warning = FALSE, 
+  fig.align = 'center',
+  include = TRUE,
+  cache.lazy = FALSE
+)
+interactive <- knitr::is_html_output()
+```
+
+<!--  Loading main libraries -->
+
+```{r load-packages, cache=FALSE, echo = FALSE, include = FALSE}
+library(tidyverse)
+library(bbcVerse)
+library(bbcSysBio)
+
+# library(openxlsx)
+# library(janitor)
+# library(glue)
+# library(plotly)
+# library(genefilter)
+# library(ggthemr)
+# library(limma)
+# library(gt)
+# library(ComplexUpset)
+```
+
+<!-- Setting R theme  -->
+
+```{r theme, eval=TRUE, echo=FALSE}
+theme_set(theme_bbc(center_titles = TRUE))
+``` 
+
+<!-- Bogus calls to enable interactive table and plotly display-->
+<!-- DO NOT REMOVE ...  -->
+
+
+<!-- Loading test datasets  -->
+
+```{r load-datasets, eval=TRUE, echo=FALSE}
+# Example datasets for RNAseq
+data(eset_rnaseq_count, package = "bbcData")
+eset_count <- eset_rnaseq_count
+rm(eset_rnaseq_count)
+
+data(eset_rnaseq_fpkm, package = "bbcData")
+eset_fpkm <- eset_rnaseq_fpkm
+rm(eset_rnaseq_fpkm)
+
+eset_tpm <- eset_fpkm
+``` 
+
+
+<!-- Activate the script(s) you want to run -->
+
+<!-------------------------------------->
+<!--      Example of Design slide     -->
+<!-------------------------------------->
+
+```{r load-Materials-and-methods, child=c("001_intro.Rmd"), eval = TRUE}
+```
+
+
+<!-------------------------------------->
+<!--            Data import           -->
+<!-------------------------------------->
+
+```{r load-Data-import, child=c("002_data_import.Rmd"), eval = FALSE}
+```
+
+
+<!-------------------------------------->
+<!--         Data management          -->
+<!-------------------------------------->
+
+```{r load-Data-management, child=c("003_data_management.Rmd"), eval = TRUE}
+```
+
+
+<!-------------------------------------->
+<!--         Pre-processing           -->
+<!-------------------------------------->
+
+```{r load-Pre-processing, child=c("004_rnaseq_preprocessing.Rmd"), eval = TRUE}
+```
+
+
+<!-------------------------------------->
+<!--         Data exploration         -->
+<!-------------------------------------->
+
+```{r load-Data-exploration, child=c("005_data_exploration.Rmd"), eval = TRUE}
+```
+
+
+
+<!-------------------------------------->
+<!-- Differential expression analysis -->
+<!-------------------------------------->
+
+
+<!-- Script for DESeq  -->
+```{r load-Differential-expression-deseq, child=c("006_rnaseq_deseq.Rmd"), eval = TRUE}
+```
+<!-- Script for Limma  -->
+```{r load-Differential-expression-limma, child=c("006_rnaseq_limma.Rmd"), eval = TRUE}
+```
+
+
+<!-- Scripts for results exploration -->
+```{r load-Differential-expression-results, child=c("007_results_exploration.Rmd"), eval = TRUE}
+```
+
+
+<!-- Scripts for results comparison -->
+```{r load-Differential-expression-comparison, child=c("008_results_comparison.Rmd"), eval = TRUE}
+```
+
+
+
+<!-------------------------------------->
+<!--         Enrichment analysis      -->
+<!-------------------------------------->
+
+<!-- Fisher analysis (multi contrasts version) -->
+```{r, child=c("009_fisher_analysis.Rmd"), eval = TRUE}
+```
+
+<!-- fGSEA analysis (multi contrasts version) -->
+```{r, child=c("009_fgsea_analysis.Rmd"), eval = TRUE}
+```
+
+
+
+<!-------------------------------------->
+<!--      Deconvolution analysis      -->
+<!-------------------------------------->
+
+<!-- Script for Quantiseq and MCP counter -->
+```{r, child=c("010_deconvolution.Rmd"), eval = TRUE}
+```
+
+
+<!-------------------------------------->
+<!--    Immune signature evaluation   -->
+<!-------------------------------------->
+
+<!-- Script for immune signature analysis -->
+```{r, child=c("011_immune_signatures.Rmd"), eval = TRUE}
+```
+

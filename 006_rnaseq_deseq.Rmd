@@ -1,0 +1,71 @@
+<!--------------------------------------------------------------------------------------------->
+<!--                                                                                         -->
+<!--                            Differential Expression analysis                             -->
+<!--                                                                                         -->
+<!--------------------------------------------------------------------------------------------->
+
+
+# **Differential expression analysis**
+
+## **Statistical modeling**
+
+:::info
++ We consider the statistical statistical model
+
+$$Expression \sim \textit{Treatment + Donor}  $$
+
++ We use the R package `DESeq` to perform the differential expression analysis
+
++ Counts are directly modeled through a Negative Binomial distribution and fitted using a Generalized Linear Model (GLM). An independent filtering is then used to estimate significant DEGs.
+
++ Fold-change (FC) and adjusted p-values (FDR of Benjamini-Hochberg correction) are used to identify differentially expressed genes (DEG)
+
++ We consider significant genes with a $|FC| > 1.3$ and a $p_{adj} < 0.05$ (FDR)
+
+:::
+
+
+
+<!-- This script performs DESeq analysis                                                     -->
+<!-- It produces a tibble with, for each contrast, its table of results and table of DEGs    -->
+<!-- This tibble is then used in the following script for result exploration                 -->        
+
+
+<!-- Loading useful libraries --->
+
+```{r, echo=FALSE}
+library(purrr)
+```
+
+<!-- Setting FC and FDR cut-offs  -->
+```{r Global-variables-1}
+t_pvalue <- 0.05
+t_FC <- 1.3
+```
+
+<!-- /!\ The variables of interest, used to define the contrasts, have to be factors   -->
+
+```{r DESeq2-no-cov}
+# Model without covariate
+model <- formula(~  Treatment)
+
+# Model with covariates (Treatment preferably last)
+model <- formula(~ Donor + Treatment )
+
+# Contrasts
+contr_list = list(c("Treatment", "AAA", "Placebo"),
+                     c("Treatment", "BBB", "Placebo"),
+                     c("Treatment", "CCC", "Placebo"))
+
+# Perform differential expression analysis with DESeq
+DEA_res <- dea_deseq(eset_object = eset_count_filtered,
+           model = model,
+           contr_list = contr_list, 
+           feature_colname = "Genes")
+
+# Add the tables of DEGs to the results
+DEA_res <- DEA_res %>% mutate(DEgenes = purrr::map(data,
+                       ~ .x %>% subset_deg(., "FC", t_FC, "FDR", t_pvalue, order = "FC")))
+
+```
+
